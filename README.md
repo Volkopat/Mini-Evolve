@@ -25,9 +25,9 @@ Mini-Evolve/
 ├── log/                  # Log files (evolution.log)
 ├── problems/             # Modular problem definitions
 │   └── <problem_name>/   # Specific problem directory
-│       ├── problem_config.yaml
+│       ├── problem_config.yaml # Contains problem params, function details, and seed_program_code
 │       ├── prompt_context.yaml
-│       ├── seed_program.py
+│       ├── evaluator_logic.py # Formerly also contained seed_program.py, now in problem_config.yaml
 │       └── evaluator_logic.py
 ├── reports/              # Generated Markdown reports
 ├── templates/            # Jinja2 prompt templates
@@ -54,10 +54,10 @@ Mini-Evolve/
 4.  **Configure the LLM and other settings:**
     - Open `config/config.yaml`.
     - **LLM Configuration**:
-        - Set `llm_provider` (e.g., "ollama").
-        - Update `api_base_url` if your LLM (e.g., Ollama) is not running locally or on the default port.
-        - Specify the `model_name` you wish to use (e.g., "mistral", "llama3").
-        - API keys are generally not needed for local Ollama, but adjust if using a cloud provider.
+        - Set `llm.provider` (e.g., "ollama_local", "openrouter").
+        - For "ollama_local", update `llm.base_url` if Ollama is not running locally or on the default port.
+        - For "openrouter", ensure `llm.api_key_env_var` points to the environment variable holding your OpenRouter API key (e.g., "OPENROUTER_API_KEY"). Load this via a `.env` file or set it in your environment.
+        - Specify the `llm.model_name` you wish to use (e.g., "mistral", "llama3" for Ollama; "google/gemini-2.5-pro-preview" for OpenRouter).
     - **Problem Selection**:
         - Set `current_problem_directory` to point to the desired problem in the `problems/` directory (e.g., `problems/matrix_multiplication_direct`).
     - Review other settings like database path, logging preferences, and evolutionary parameters.
@@ -94,16 +94,17 @@ The report will be saved in the `reports/` directory, named with the problem and
 
 ## Available Problems
 The system is designed to be modular. Problems are located in the `problems/` directory. Each problem sub-directory contains:
-- `problem_config.yaml`: Defines problem-specific parameters like target metrics, evaluation timeouts, and function signatures.
+- `problem_config.yaml`: Defines problem-specific parameters like target metrics, evaluation timeouts, function signatures, and importantly, the `seed_program_code`.
 - `prompt_context.yaml`: Provides detailed context for the LLM, including the problem description, constraints, examples, and desired output format.
-- `seed_program.py`: The initial program that kicks off the evolution.
-- `evaluator_logic.py`: Contains the `evaluate_program` function, which takes a program string and returns a dictionary of evaluation results (including a `score`).
+- `evaluator_logic.py`: Contains the `evaluate_program` function, which takes a candidate program module and returns a dictionary of evaluation results (including a `score` and `is_valid` flag).
 
 Currently available example problems include:
 - `problems/matrix_multiplication_direct`: Aims to evolve a Python function for matrix multiplication.
-- `problems/tensor_decomposition_4x4_complex`: (Placeholder/Example for a more complex task)
+- `problems/tensor_decomposition_4x4_complex`: Evolves a function for 4x4 complex matrix tensor decomposition, focusing on minimizing complex multiplications.
+- `problems/tsp_heuristic`: Aims to evolve a Python function that provides a heuristic solution to the Traveling Salesperson Problem.
+- `problems/set_cover`: Aims to evolve a Python function to find a minimal set cover.
 
-To add a new problem, create a new directory under `problems/` and populate it with these files, then update `current_problem_directory` in `config/config.yaml` to point to your new problem.
+To add a new problem, create a new directory under `problems/` and populate it with `problem_config.yaml` (including `seed_program_code`), `prompt_context.yaml`, and `evaluator_logic.py`. Then update `current_problem_directory` in `config/config.yaml` to point to your new problem.
 
 ## Future Work
 - More sophisticated selection and diversity maintenance algorithms.
