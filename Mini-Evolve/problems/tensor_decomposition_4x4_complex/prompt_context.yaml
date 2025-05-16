@@ -1,0 +1,86 @@
+problem_description: |
+  The problem is to discover novel algorithms for 4x4 complex matrix multiplication using fewer complex multiplications than existing methods. Strassen's algorithm for real matrices uses 7 multiplications for 2x2 matrices (instead of 8). For 4x4 complex matrices, a known baseline is 49 complex multiplications (derived from applying Strassen recursively). AlphaEvolve discovered an algorithm using 48 complex multiplications.
+  We are looking for a Python function that implements the core logic for such a decomposition/multiplication algorithm.
+
+function_signature_info: |
+  The target function MUST be named `decompose_tensor` (as specified in problem_config.yaml under function_details.name).
+  It takes one argument: `tensor_input`.
+  - `tensor_input`: This argument is primarily a placeholder. Your `decompose_tensor` function should focus on defining an algorithm, not processing this specific input. You can ignore it or use it for advanced hint processing if explicitly guided.
+  
+  The `decompose_tensor` function MUST return a tuple of exactly two elements:
+  `(multiplication_algorithm_function, num_complex_multiplications)`
+
+  1. `multiplication_algorithm_function`:
+     - This MUST be a callable Python function that you define (e.g., an inner function or a function defined at the same scope and returned by reference).
+     - This callable function MUST accept two arguments: `matrix_a` and `matrix_b`.
+     - `matrix_a` and `matrix_b` will be 4x4 complex matrices, represented as lists of lists of Python `complex` numbers (e.g., `[[complex(1,0), complex(2,1)], ...]`).
+     - This callable function MUST return the resulting 4x4 complex matrix product `C` (also a list of lists of `complex` numbers).
+     - The logic within this callable function embodies your discovered algorithm for matrix multiplication.
+
+  2. `num_complex_multiplications`:
+     - This MUST be an integer representing the total number of distinct complex scalar multiplication operations performed by your `multiplication_algorithm_function` to compute the product matrix C.
+     - Addition, subtraction, and multiplication by constants known at the time of defining the algorithm (e.g., multiplying by `complex(2,0)` or `complex(0,1)`) do NOT count towards this total if they can be optimized away by a compiler or pre-computation. Focus on multiplications between elements derived from `matrix_a` and `matrix_b` or their sums/differences.
+
+constraints_text: |
+  - The solution MUST be implemented in pure Python.
+  - The use of external libraries like NumPy, SciPy, TensorFlow, PyTorch, JAX, CuPy is STRICTLY DISALLOWED for the core algorithm computation. Standard Python math operations are allowed.
+  - The algorithm must be for 4x4 complex matrices.
+  - The primary goal is to minimize `num_complex_multiplications`.
+  - The algorithm must be mathematically correct; the decomposed factors must correctly reconstruct the product of two arbitrary 4x4 complex matrices.
+  - Focus on the logic of the decomposition and the count of multiplications.
+  - Efficiency in terms of Python execution speed is secondary to correctness and minimizing complex multiplications, but grossly inefficient solutions should be avoided.
+
+example_code_structure: |
+  # This is a conceptual guide for the structure of your `decompose_tensor` function.
+  def decompose_tensor(tensor_input): # tensor_input can be ignored for basic implementations
+
+      # Define your algorithm as an inner function or a separate function.
+      # This inner function IS the core of your discovered algorithm.
+      def _multiply_using_discovered_method(matrix_a, matrix_b):
+          # matrix_a and matrix_b are 4x4 lists of lists of complex numbers.
+          # Implement your novel 4x4 complex matrix multiplication here.
+          
+          # Example (Illustrative - this is standard 64-mult, not novel):
+          #   C = [[complex(0,0) for _ in range(4)] for _ in range(4)]
+          #   actual_multiplications_performed_here = 0
+          #   for i in range(4):
+          #       for j in range(4):
+          #           sum_val = complex(0,0)
+          #           for k in range(4):
+          #               # This is one complex multiplication:
+          #               product = matrix_a[i][k] * matrix_b[k][j] 
+          #               actual_multiplications_performed_here += 1
+          #               sum_val += product
+          #           C[i][j] = sum_val
+          #   # In this illustrative example, actual_multiplications_performed_here would be 64.
+          #   return C
+
+          # For a real discovered algorithm (e.g., Strassen-like), you would:
+          # 1. Define intermediate terms (M1, M2, ... Mk) using sums/differences of sub-blocks of A and B.
+          # 2. Each Mk calculation involving a product of terms derived from A and B counts as one complex multiplication.
+          # 3. Combine these Mk terms (using only additions/subtractions) to form the elements of the result matrix C.
+          # 4. Return C.
+          # The `num_complex_multiplications` returned by `decompose_tensor` should be k (the number of M terms).
+          
+          # Placeholder: Replace with actual algorithm logic
+          C_result = [[complex(0,0) for _ in range(4)] for _ in range(4)] 
+          # Your algorithm's logic to populate C_result goes here.
+          
+          return C_result
+
+      # This is the number of complex multiplications your algorithm uses.
+      # It must accurately reflect the number of multiplications in _multiply_using_discovered_method.
+      # For example, if your algorithm is Strassen-like with 49 multiplications:
+      claimed_number_of_multiplications = 49 # Replace with your algorithm's actual count.
+
+      # Return the algorithm function itself (NOT the result of calling it)
+      # and the claimed number of multiplications.
+      return _multiply_using_discovered_method, claimed_number_of_multiplications
+
+# Additional context that might be useful for the LLM
+meta_context: |
+  - The AlphaEvolve paper (Fawzi et al., 2022, Nature) is the primary reference for this problem.
+  - The goal is to find an algorithm analogous to how AlphaTensor found algorithms for real matrix multiplication.
+  - The search space is vast. The LLM should try to propose novel combinations of operations.
+  - The evaluation will check if the proposed `decomposed_factors` correctly compute 4x4 complex matrix multiplication and will use the returned `num_complex_multiplications` as the primary performance metric.
+  - Think step-by-step to construct the sequence of operations that define the algorithm. 

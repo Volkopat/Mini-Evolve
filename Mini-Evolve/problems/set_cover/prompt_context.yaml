@@ -1,0 +1,34 @@
+problem_description: |
+  The Set Cover Problem is a classic optimization problem. Given a 'universe' of elements U and a collection of 'subsets' S = {S1, S2, ..., Sn} where each Si is a subset of U, the goal is to find a minimum size subcollection of S whose union is equal to U.
+  Effectively, you need to select the fewest possible subsets from S such that all elements in U are covered by at least one selected subset.
+
+function_signature_info: |
+  The function to be implemented is `solve_set_cover(universe, subsets)`.
+  - `universe`: A Python `set` of elements (e.g., {1, 2, 3, 4, 5}). Elements can be integers or strings.
+  - `subsets`: A Python `list` of `set`s (e.g., [{1, 2}, {2, 3}, {3, 4, 5}, {1, 5}]).
+  The function should return a `list` of integers, representing the indices of the chosen subsets from the input `subsets` list that form a valid and minimal cover.
+  For example, if the optimal solution uses subsets at index 0 and 2 from the input list, the function should return `[0, 2]` (or `[2, 0]`, order doesn't matter).
+
+constraints_and_considerations: |
+  1. The returned list of indices must correspond to subsets that collectively cover all elements in the `universe`.
+  2. The primary goal is to minimize the number of chosen subsets.
+  3. All elements in the input `subsets` will be subsets of the `universe`.
+  4. You can assume that a cover always exists for the given test cases.
+  5. Efficiency is good, but correctness (valid cover) and optimality (minimum number of sets) are paramount.
+
+example_heuristic_approach_greedy: |
+  A common heuristic for Set Cover is a greedy approach:
+  1. Initialize an empty set `covered_elements` and an empty list `chosen_subsets_indices`.
+  2. While `covered_elements` does not equal `universe`:
+     a. Select the subset `S_best` from the available `subsets` (those not yet chosen) that covers the maximum number of currently *uncovered* elements.
+     b. If multiple subsets cover the same maximum number of new elements, a tie-breaking rule can be used (e.g., pick the one with the smallest index, or smallest original size).
+     c. Add the index of `S_best` to `chosen_subsets_indices`.
+     d. Add all elements from `S_best` to `covered_elements`.
+  3. Return `chosen_subsets_indices`.
+
+  Consider how to efficiently track uncovered elements and how to select the best subset in each step.
+  The LLM should aim to generate Python code that implements such a heuristic or a variation of it.
+
+output_format_notes: |
+  The Python function `solve_set_cover` should strictly return a list of integer indices. 
+  For instance, if `subsets = [S0, S1, S2, S3]` and the best cover uses `S1` and `S3`, the output should be `[1, 3]`. 
