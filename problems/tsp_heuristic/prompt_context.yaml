@@ -1,0 +1,75 @@
+# prompt_context.yaml for TSP Heuristic
+
+problem_description: |
+  The Traveling Salesperson Problem (TSP) is a classic optimization problem.
+  Given a list of cities and the distances between each pair of cities, the task is to find the shortest possible route that visits each city exactly once and returns to the origin city.
+  You are evolving a Python heuristic function to find good (short) tours for TSP instances.
+  The input `graph_matrix` will be an adjacency matrix where `graph_matrix[i][j]` is the distance between city `i` and city `j`.
+  Assume the graph is complete and undirected (i.e., distance from i to j is the same as j to i).
+
+function_signature_info: |
+  The target function MUST be named `solve_tsp_heuristic` (as specified in problem_config.yaml under function_details.name).
+  It takes one argument: `graph_matrix`.
+  - `graph_matrix`: A list of lists of numbers (integers or floats) representing the adjacency matrix of distances.
+    `graph_matrix[i][j]` is the distance from city `i` to city `j`.
+    The number of cities `N` can be inferred from `len(graph_matrix)`.
+
+  The `solve_tsp_heuristic` function MUST return a list of city indices (integers from 0 to N-1) representing the order of the tour.
+  The tour should implicitly start and end at the first city in the returned list if a full cycle is considered, but the returned list should just be the sequence of cities.
+  For example, for 4 cities, a valid return might be `[0, 2, 1, 3]`. This means the path is 0 -> 2 -> 1 -> 3 (and then 3 -> 0 to complete the cycle for length calculation).
+  The returned list must contain each city index from `0` to `N-1` exactly once.
+
+constraints_text: |
+  - The returned tour (list of city indices) must be a permutation of `[0, 1, ..., N-1]`, where `N` is the number of cities.
+  - The function should be reasonably efficient. Avoid brute-force enumeration of all possible tours as that will be too slow for even moderately sized graphs.
+  - The input `graph_matrix` will always be a square matrix.
+  - Distances will be positive numbers.
+  - You can assume `graph_matrix[i][i] = 0`.
+
+example_code_structure: |
+  Here are some conceptual ideas for TSP heuristics. Your implementation can draw inspiration from these or devise new strategies:
+
+  1.  **Nearest Neighbor Heuristic:**
+      - Start at a random city.
+      - At each step, go to the nearest unvisited city.
+      - Repeat until all cities are visited.
+      - Return to the starting city.
+
+      ```python
+      # Conceptual structure for Nearest Neighbor
+      # def solve_tsp_heuristic(graph_matrix):
+      #     num_cities = len(graph_matrix)
+      #     if num_cities == 0: return []
+      #     
+      #     current_city = 0 # Or a random start
+      #     tour = [current_city]
+      #     visited = {current_city}
+      #
+      #     while len(tour) < num_cities:
+      #         next_city = -1
+      #         min_dist = float('inf')
+      #         for city_idx in range(num_cities):
+      #             if city_idx not in visited and graph_matrix[current_city][city_idx] < min_dist:
+      #                 min_dist = graph_matrix[current_city][city_idx]
+      #                 next_city = city_idx
+      #         if next_city == -1: # Should not happen in a complete graph
+      #             break 
+      #         tour.append(next_city)
+      #         visited.add(next_city)
+      #         current_city = next_city
+      #     return tour
+      ```
+
+  2.  **Greedy / Insertion Heuristics:**
+      - Start with a small sub-tour (e.g., two cities).
+      - Iteratively add unvisited cities to the tour by inserting them in the position that causes the smallest increase in tour length.
+
+  3.  **2-opt Heuristic (Improvement Heuristic):**
+      - Start with an initial tour (e.g., random or from another heuristic).
+      - Iteratively try to improve it by reversing a segment of the tour.
+      - If `(..., city_A, city_B, ..., city_C, city_D, ...)` is part of a tour, consider swapping edges `(A,B)` and `(C,D)` with `(A,C)` and `(B,D)` by reversing the path from B to C, if it shortens the tour.
+      - This is often applied on top of a constructive heuristic. Your function could incorporate this.
+
+  Your goal is to implement a complete `solve_tsp_heuristic` function.
+  Focus on creating a heuristic that finds short tours.
+  The provided parent code (if any) is a very naive starting point. Try to implement a more sophisticated heuristic. 

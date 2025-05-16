@@ -265,8 +265,8 @@ def _extract_python_code(response_text: str) -> str | None:
     # Remove <think>...</think> and <tag/> style tags
     cleaned_response_text = re.sub(r"<([^>]+)>.*?<\/\1>", "", cleaned_response_text, flags=re.DOTALL | re.IGNORECASE)
     cleaned_response_text = re.sub(r"<[^>]+\/>", "", cleaned_response_text, flags=re.DOTALL | re.IGNORECASE) # Handle self-closing tags
-    cleaned_response_text = cleaned_response_text.strip() # Strip again after tag removal
-    if not cleaned_response_text: # If only tags were present
+    cleaned_response_text = cleaned_response_text.strip()
+    if not cleaned_response_text:
         return None
 
     # Attempt to find Markdown code blocks first
@@ -274,17 +274,10 @@ def _extract_python_code(response_text: str) -> str | None:
     if match:
         return match.group(1).strip()
 
-    # If no markdown, and the text starts with "def ", assume it's direct code
-    # This is a fallback. Ideally, LLM is instructed to use Markdown.
-    if cleaned_response_text.strip().startswith("def "):
-         return cleaned_response_text.strip()
-
-    # If still no specific code structure found, consider if the LLM was forced to ONLY output code.
-    # In that case, the cleaned_response_text *might* be the code.
-    # However, this is risky if the LLM includes any preamble or postamble not caught by tag removal.
-    # For now, returning None if no clear markers are found.
-    # If strict "only code" output is guaranteed by prompt and LLM, could return cleaned_response_text here.
-    return None
+    # If no markdown is found, and our prompt instructs the LLM to ONLY output code,
+    # then the cleaned_response_text is assumed to be the code.
+    # The check for `startswith("def ")` was too restrictive if imports are present.
+    return cleaned_response_text # Return the whole cleaned text
 
 
 # --- Main Generator Function (Async) ---
@@ -333,27 +326,27 @@ async def generate_code_variant(context_from_evolution_loop: dict, client: httpx
 
     generated_code = _extract_python_code(llm_response_content)
 
-    # Get expected function name from problem_config
-    expected_function_name = problem_config.get('function_details', {}).get('name')
-    if not expected_function_name:
-        logger.error("CRITICAL: Function name not found in problem_config.yaml (function_details.name).")
-        # This is a significant configuration error.
-        # Depending on desired strictness, could raise error or return None.
-        # For now, log error and let it potentially fail extraction.
-        expected_function_name = "solve" # Fallback just so the next check doesn't crash on None
-        logger.warning("Falling back to expected function name: %s due to missing config." % expected_function_name)
-
-
     if not generated_code:
         logger.warning("Failed to extract code from LLM response. Response (first 500 chars): %s" % llm_response_content[:500])
         return None, actual_prompt_used
         
-    # Basic validation: does the extracted code start with the expected function definition?
-    if not generated_code.strip().startswith("def %s(" % expected_function_name):
-        logger.warning("Extracted code does not start with 'def %s(': %s..." % (expected_function_name, generated_code[:100]))
-        # Could add more sophisticated checks here, e.g., trying to parse with `ast`
-        return None, actual_prompt_used # Return None if it doesn't look like the function we want
+    # Get expected function name from problem_config
+    expected_function_name = problem_config.get('function_details', {}).get('name')
+    if not expected_function_name:
+        logger.error("CRITICAL: Function name not found in problem_config.yaml (function_details.name).")
+        expected_function_name = "solve" 
+        logger.warning("Falling back to expected function name: %s due to missing config." % expected_function_name)
 
+    func_def_pattern = "def %s(" % expected_function_name
+
+    # Check if the expected function definition is present in the extracted code.
+    # We use the entire 'generated_code' block as extracted by _extract_python_code,
+    # as it might contain necessary imports before the function definition.
+    if func_def_pattern not in generated_code:
+        logger.warning("Extracted code does not appear to contain the expected function definition '%s'. Code (first 150 chars): %s..." % (func_def_pattern, generated_code[:150]))
+        return None, actual_prompt_used
+
+    # If the definition is present, return the whole extracted code block.
     return generated_code, actual_prompt_used
 
 # --- Utility to get last prompt (for debugging/logging) ---

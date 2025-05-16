@@ -19,4 +19,32 @@ function_details:
 disallowed_patterns:
   - "import numpy"
   - "import scipy"
-  # Add any other libraries that should be strictly forbidden for this problem. 
+  # Add any other libraries that should be strictly forbidden for this problem.
+
+seed_program_code: |
+  def solve(matrix_a, matrix_b):
+      # Basic structure, may not be correct or complete
+      # This seed is deliberately flawed to give LLM something to fix.
+      if not matrix_a or not matrix_a[0] or not matrix_b or not matrix_b[0]:
+          return [] # Or None
+      
+      rows_a = len(matrix_a)
+      cols_a = len(matrix_a[0])
+      rows_b = len(matrix_b)
+      cols_b = len(matrix_b[0])
+
+      if cols_a != rows_b:
+          # print("Matrices not compatible for multiplication") # Not allowed in final code
+          return [] # Or None
+
+      # Initialize result matrix with zeros (or placeholder)
+      result_matrix = [[0 for _ in range(cols_b)] for _ in range(rows_a)]
+      
+      # A very incomplete or incorrect multiplication attempt
+      # Example: only operates on the first element or does element-wise which is wrong
+      # for r_a in range(rows_a):
+      #    for c_b in range(cols_b):
+      #        if r_a < rows_b and c_b < cols_a : # incorrect indexing if trying to map directly
+      #             result_matrix[r_a][c_b] = matrix_a[r_a][0] * matrix_b[0][c_b] # Still not full dot product logic
+                          
+      return result_matrix # Return whatever it managed to compute, likely just zeros or a badly computed matrix 

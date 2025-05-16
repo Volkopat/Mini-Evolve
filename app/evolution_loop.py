@@ -119,12 +119,16 @@ async def run_evolution():
     main_logger.info("Program database initialized at: %s" % db_path)
 
     # Load, evaluate, and add seed program
-    try:
-        seed_code_str = load_seed_program(current_problem_dir, seed_function_name)
-        main_logger.info("Loaded seed program for '%s':\n%s" % (seed_function_name, seed_code_str[:300]))
-    except Exception:
-        main_logger.critical("Failed to load seed program. Aborting.")
+    seed_code_str = problem_cfg.get('seed_program_code')
+    if not seed_code_str or not seed_code_str.strip():
+        main_logger.critical("'seed_program_code' not found or is empty in problem_config.yaml for problem '%s'. Aborting." % problem_name)
         return
+    
+    main_logger.info("Using seed program from problem_config.yaml for '%s':\n%s" % (seed_function_name, seed_code_str[:300]))
+
+    # DEBUGGING: Check type and content of seed_code_str
+    main_logger.debug("Type of seed_code_str: %s" % type(seed_code_str))
+    main_logger.debug("Repr of seed_code_str (first 500 chars): %s" % repr(seed_code_str)[:500])
 
     # Evaluate seed using the refactored evaluator
     eval_results_seed = evaluator.evaluate(seed_code_str, main_cfg, problem_cfg, current_problem_dir)

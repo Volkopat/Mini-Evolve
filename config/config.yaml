@@ -1,12 +1,12 @@
 # Configuration for Mini-Evolve
 
-current_problem_directory: "problems/tensor_decomposition_4x4_complex" # Specifies the active problem
+current_problem_directory: "problems/matrix_multiplication_direct" # Specifies the active problem
 
 llm:
   provider: "openrouter" # Switched to openrouter
   # provider: "ollama_local" # Indicates local Ollama
   # model_name: "qwen3:30b-a3b" # Ollama model
-  # base_url: "http://localhost:11434/v1" # Your Ollama server base URL
+  # base_url: "http://10.1.1.28:11434/v1" # Your Ollama server base URL
   # api_key: # Optional: Only if your Ollama instance is configured with authentication. Often not needed for local.
 
   # OpenRouter Configuration
@@ -20,8 +20,7 @@ llm:
   
   temperature: 0.7
   max_tokens: 1000000 # Gemini
-  # max_tokens: 160000 # DeepSeek
-  # max_tokens: 32000 # Ollama
+  # max_tokens: 160000 # Note: OpenRouter models have their own max token limits, ensure this is compatible or adjust per model
   timeout_seconds: 3600 # Timeout for LLM API requests
 
 evolution_loop:
