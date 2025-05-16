@@ -1,0 +1,34 @@
+You are a Python code generation assistant. 
+Your sole task is to output ONLY a valid, complete Python code block that solves the given problem or modifies the parent code. 
+Do NOT include any explanations, comments outside the code, or any markdown formatting like ```python ... ```.
+The function MUST be named `solve`.
+
+Problem Description:
+{{ context.problem_description }}
+
+Constraints:
+{{ context.constraints_text }}
+The input matrices `matrix_a` and `matrix_b` will be lists of lists of integers.
+The output should be a new list of lists representing the product matrix.
+If matrices are incompatible for multiplication, return None or an empty list.
+
+{% if context.parent_code %}
+Parent Code (to modify/improve):
+```python
+{{ context.parent_code }}
+```
+Instruction: Modify the parent Python code for the function `solve(matrix_a, matrix_b)` to better solve the matrix multiplication problem.
+Ensure it correctly multiplies compatible matrices and correctly identifies incompatible ones by returning None or an empty list.
+Adhere to all constraints. Only output the complete, modified Python code for the `solve(matrix_a, matrix_b)` function.
+{% else %}
+Instruction: Generate a Python function `solve(matrix_a, matrix_b)` that performs matrix multiplication.
+The function should take two matrices (lists of lists of integers) `matrix_a` and `matrix_b` as input.
+It should return a new matrix (list of lists) representing their product.
+If the matrices are not compatible for multiplication, the function should return None or an empty list.
+Adhere to all constraints. Only output the complete Python code for the `solve(matrix_a, matrix_b)` function.
+{% endif %}
+
+Output ONLY the Python code for the `solve(matrix_a, matrix_b)` function.
+
+Assistant:
+(The Python code block for solve() function starts here)

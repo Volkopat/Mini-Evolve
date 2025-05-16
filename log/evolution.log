@@ -1,0 +1,133 @@
+2025-05-16 15:40:37,434 - EvolutionLoop - INFO - ==== Mini-Evolve Session Started (Async) ====
+2025-05-16 15:40:37,434 - EvolutionLoop - INFO - Evolving problem: matrix_multiplication_direct
+2025-05-16 15:40:37,434 - EvolutionLoop - INFO - Evolutionary Loop Config: Generations=5, Children/Parent=2, ParentPoolK=10, NumParentsSelect=3
+2025-05-16 15:40:37,437 - EvolutionLoop - INFO - Program database initialized at: db/program_database.db
+2025-05-16 15:40:37,438 - EvoLoop.SeedLoader - INFO - Successfully loaded seed program from: problems/matrix_multiplication_direct/seed_program.py
+2025-05-16 15:40:37,438 - EvolutionLoop - INFO - Loaded seed program for 'solve':
+def solve(matrix_a, matrix_b):
+    # Basic structure, may not be correct or complete
+    # This seed is deliberately flawed to give LLM something to fix.
+    if not matrix_a or not matrix_a[0] or not matrix_b or not matrix_b[0]:
+        return [] # Or None
+    
+    rows_a = len(matrix_a)
+    cols_a 
+2025-05-16 15:40:37,443 - EvolutionLoop - INFO - Seed program evaluation: Score=0.0, Valid=False
+2025-05-16 15:40:37,443 - EvolutionLoop - WARNING - Seed eval error: Output mismatch on test case 1
+2025-05-16 15:40:37,443 - EvolutionLoop - WARNING - Seed program is NOT valid. This may hinder evolution.
+2025-05-16 15:40:37,448 - EvolutionLoop - INFO - Seed program added to DB with ID: 66e708f8-a353-4443-81df-8f784b95a654
+2025-05-16 15:40:37,540 - EvolutionLoop - INFO - ---- Generation 1/5 Starting ----
+2025-05-16 15:40:37,541 - Selection - WARNING - No *valid* candidate programs found. Attempting to select from all programs (including invalid).
+2025-05-16 15:40:37,542 - Selection - INFO - Found 1 programs (including invalid) for parent selection pool.
+2025-05-16 15:40:37,542 - Selection - WARNING - Candidate pool size (1) is less than num_parents (3). Returning all candidates.
+2025-05-16 15:40:37,542 - EvolutionLoop - INFO - Generation 1: Selected 1 parents.
+2025-05-16 15:40:37,542 - EvolutionLoop - INFO - Generation 1: Launching 2 child generation tasks...
+2025-05-16 15:41:40,387 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:41:41,283 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:41:41,284 - EvolutionLoop - INFO - Generation 1: All 2 child generation tasks completed.
+2025-05-16 15:41:41,287 - EvolutionLoop - INFO -     Child 1/2 (Parent: 66e708f8): Score=1.0000, Valid=True
+2025-05-16 15:41:41,291 - EvolutionLoop - INFO -     Added new valid child to DB: ID=7dafb0cc, Score=1.0000
+2025-05-16 15:41:41,294 - EvolutionLoop - INFO -     Child 2/2 (Parent: 66e708f8): Score=1.0000, Valid=True
+2025-05-16 15:41:41,297 - EvolutionLoop - INFO -     Added new valid child to DB: ID=f06b34ff, Score=1.0000
+2025-05-16 15:41:41,298 - EvolutionLoop - INFO - Generation 1 Summary: Current best score in DB = 1.0000 (ID: 7dafb0cc)
+2025-05-16 15:41:41,298 - EvolutionLoop - INFO - ---- Generation 1 Finished ----
+
+2025-05-16 15:41:42,299 - EvolutionLoop - INFO - ---- Generation 2/5 Starting ----
+2025-05-16 15:41:42,300 - Selection - WARNING - Candidate pool size (2) is less than num_parents (3). Returning all candidates.
+2025-05-16 15:41:42,301 - EvolutionLoop - INFO - Generation 2: Selected 2 parents.
+2025-05-16 15:41:42,301 - EvolutionLoop - INFO - Generation 2: Launching 4 child generation tasks...
+2025-05-16 15:42:45,967 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:42:46,476 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:42:49,173 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:42:49,175 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:42:49,177 - EvolutionLoop - INFO - Generation 2: All 4 child generation tasks completed.
+2025-05-16 15:42:49,183 - EvolutionLoop - INFO -     Child 1/4 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:42:49,188 - EvolutionLoop - INFO -     Added new valid child to DB: ID=8d900d8d, Score=1.0000
+2025-05-16 15:42:49,193 - EvolutionLoop - INFO -     Child 2/4 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:42:49,196 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:42:49,202 - EvolutionLoop - INFO -     Child 3/4 (Parent: f06b34ff): Score=1.0000, Valid=True
+2025-05-16 15:42:49,206 - EvolutionLoop - INFO -     Added new valid child to DB: ID=18860bb5, Score=1.0000
+2025-05-16 15:42:49,209 - EvolutionLoop - INFO -     Child 4/4 (Parent: f06b34ff): Score=1.0000, Valid=True
+2025-05-16 15:42:49,212 - EvolutionLoop - INFO -     Added new valid child to DB: ID=016460e7, Score=1.0000
+2025-05-16 15:42:49,213 - EvolutionLoop - INFO - Generation 2 Summary: Current best score in DB = 1.0000 (ID: 7dafb0cc)
+2025-05-16 15:42:49,213 - EvolutionLoop - INFO - ---- Generation 2 Finished ----
+
+2025-05-16 15:42:50,214 - EvolutionLoop - INFO - ---- Generation 3/5 Starting ----
+2025-05-16 15:42:50,216 - Selection - INFO - Selected 3 parents from a pool of 5 candidates.
+2025-05-16 15:42:50,216 - EvolutionLoop - INFO - Generation 3: Selected 3 parents.
+2025-05-16 15:42:50,217 - EvolutionLoop - INFO - Generation 3: Launching 6 child generation tasks...
+2025-05-16 15:44:15,065 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:44:15,662 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:44:15,664 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:44:17,371 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:44:20,123 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:44:43,771 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:44:43,774 - EvolutionLoop - INFO - Generation 3: All 6 child generation tasks completed.
+2025-05-16 15:44:43,780 - EvolutionLoop - INFO -     Child 1/6 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:44:43,785 - EvolutionLoop - INFO -     Added new valid child to DB: ID=fa9f9182, Score=1.0000
+2025-05-16 15:44:43,790 - EvolutionLoop - INFO -     Child 2/6 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:44:43,793 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:44:43,799 - EvolutionLoop - INFO -     Child 3/6 (Parent: 8d900d8d): Score=1.0000, Valid=True
+2025-05-16 15:44:43,801 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:44:43,807 - EvolutionLoop - INFO -     Child 4/6 (Parent: 8d900d8d): Score=1.0000, Valid=True
+2025-05-16 15:44:43,809 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:44:43,815 - EvolutionLoop - INFO -     Child 5/6 (Parent: 18860bb5): Score=1.0000, Valid=True
+2025-05-16 15:44:43,818 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:44:43,823 - EvolutionLoop - INFO -     Child 6/6 (Parent: 18860bb5): Score=1.0000, Valid=True
+2025-05-16 15:44:43,825 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:44:43,826 - EvolutionLoop - INFO - Generation 3 Summary: Current best score in DB = 1.0000 (ID: 7dafb0cc)
+2025-05-16 15:44:43,826 - EvolutionLoop - INFO - ---- Generation 3 Finished ----
+
+2025-05-16 15:44:44,827 - EvolutionLoop - INFO - ---- Generation 4/5 Starting ----
+2025-05-16 15:44:44,829 - Selection - INFO - Selected 3 parents from a pool of 6 candidates.
+2025-05-16 15:44:44,829 - EvolutionLoop - INFO - Generation 4: Selected 3 parents.
+2025-05-16 15:44:44,829 - EvolutionLoop - INFO - Generation 4: Launching 6 child generation tasks...
+2025-05-16 15:46:03,185 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:46:03,764 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:46:03,766 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:46:07,398 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:46:07,669 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:46:30,207 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:46:30,210 - EvolutionLoop - INFO - Generation 4: All 6 child generation tasks completed.
+2025-05-16 15:46:30,216 - EvolutionLoop - INFO -     Child 1/6 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:46:30,219 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:46:30,225 - EvolutionLoop - INFO -     Child 2/6 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:46:30,227 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:46:30,232 - EvolutionLoop - INFO -     Child 3/6 (Parent: f06b34ff): Score=1.0000, Valid=True
+2025-05-16 15:46:30,235 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:46:30,240 - EvolutionLoop - INFO -     Child 4/6 (Parent: f06b34ff): Score=1.0000, Valid=True
+2025-05-16 15:46:30,243 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:46:30,248 - EvolutionLoop - INFO -     Child 5/6 (Parent: fa9f9182): Score=1.0000, Valid=True
+2025-05-16 15:46:30,251 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:46:30,256 - EvolutionLoop - INFO -     Child 6/6 (Parent: fa9f9182): Score=1.0000, Valid=True
+2025-05-16 15:46:30,258 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:46:30,258 - EvolutionLoop - INFO - Generation 4 Summary: Current best score in DB = 1.0000 (ID: 7dafb0cc)
+2025-05-16 15:46:30,259 - EvolutionLoop - INFO - ---- Generation 4 Finished ----
+
+2025-05-16 15:46:31,260 - EvolutionLoop - INFO - ---- Generation 5/5 Starting ----
+2025-05-16 15:46:31,261 - Selection - INFO - Selected 3 parents from a pool of 6 candidates.
+2025-05-16 15:46:31,261 - EvolutionLoop - INFO - Generation 5: Selected 3 parents.
+2025-05-16 15:46:31,262 - EvolutionLoop - INFO - Generation 5: Launching 6 child generation tasks...
+2025-05-16 15:47:48,930 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:47:49,254 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:47:49,256 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:47:52,016 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:47:52,516 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:48:13,822 - httpx - INFO - HTTP Request: POST http://10.1.1.28:11434/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-16 15:48:13,825 - EvolutionLoop - INFO - Generation 5: All 6 child generation tasks completed.
+2025-05-16 15:48:13,830 - EvolutionLoop - INFO -     Child 1/6 (Parent: 016460e7): Score=1.0000, Valid=True
+2025-05-16 15:48:13,835 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:48:13,840 - EvolutionLoop - INFO -     Child 2/6 (Parent: 016460e7): Score=1.0000, Valid=True
+2025-05-16 15:48:13,843 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:48:13,848 - EvolutionLoop - INFO -     Child 3/6 (Parent: fa9f9182): Score=1.0000, Valid=True
+2025-05-16 15:48:13,850 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:48:13,856 - EvolutionLoop - INFO -     Child 4/6 (Parent: fa9f9182): Score=1.0000, Valid=True
+2025-05-16 15:48:13,859 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:48:13,865 - EvolutionLoop - INFO -     Child 5/6 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:48:13,867 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:48:13,872 - EvolutionLoop - INFO -     Child 6/6 (Parent: 7dafb0cc): Score=1.0000, Valid=True
+2025-05-16 15:48:13,874 - EvolutionLoop - INFO -     Valid child was a duplicate (by normalized hash), not added. Score=1.0000
+2025-05-16 15:48:13,875 - EvolutionLoop - INFO - Generation 5 Summary: Current best score in DB = 1.0000 (ID: 7dafb0cc)
+2025-05-16 15:48:13,875 - EvolutionLoop - INFO - ---- Generation 5 Finished ----
+
+2025-05-16 15:48:13,876 - EvolutionLoop - INFO - ==== Mini-Evolve Session Finished ====

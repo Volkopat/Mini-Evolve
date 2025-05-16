@@ -1,0 +1,32 @@
+problem_specific_parameters:
+  # Placeholder for parameters specific to the 4x4 complex tensor decomposition
+  # For example:
+  # dimensions: [4, 4, 4, 4] # Or however the tensor is structured
+  # target_rank: R # The desired rank of decomposition
+  # complexity_measure: "multiplications"
+
+# Evaluation criteria specific to this problem
+evaluation:
+  # Example:
+  # target_metric_name: "accuracy" 
+  # target_metric_value: 1.0
+  # comparison_mode: "equals" # or "greater_than_or_equal_to" etc.
+  # timeout_seconds_per_test: 60
+  pass_fail_logic: "custom" # Indicates that evaluator_logic.py will determine pass/fail
+
+# Information for the LLM about the function to be generated
+function_details:
+  name: "decompose_tensor"
+  # Input/output description can be added here or in prompt_context.yaml
+  # Example:
+  # inputs: "A 4x4x4x4 complex tensor (represented as nested lists or numpy array if allowed)"
+  # outputs: "Factors of the decomposition, and number of complex multiplications used."
+
+# Any disallowed keywords or patterns for this specific problem
+# (supplements global disallowed keywords if any)
+disallowed_patterns:
+  - "import numpy" # Example, if we want to avoid numpy for this specific problem initially
+  - "import cupy"
+  - "import tensorflow"
+  - "import torch"
+  - "import jax" 

@@ -1,0 +1,21 @@
+# Problem-specific configuration for direct matrix multiplication
+problem_specific_parameters:
+  matrix_max_dim_size: 5
+  matrix_min_dim_size: 2
+  matrix_element_min: -10
+  matrix_element_max: 10
+  num_test_cases_per_eval: 20 # Number of random matrix pairs to test
+
+evaluation:
+  pass_fail_logic: "custom" # Indicates that evaluator_logic.py will determine pass/fail
+  # Potentially add other evaluation criteria if needed, like timeout_seconds_per_test
+
+function_details:
+  name: "solve"
+  # problem_description and constraints_text are now primarily in prompt_context.yaml
+  # but can be briefly mentioned or used here for other config purposes if necessary.
+
+disallowed_patterns:
+  - "import numpy"
+  - "import scipy"
+  # Add any other libraries that should be strictly forbidden for this problem. 
