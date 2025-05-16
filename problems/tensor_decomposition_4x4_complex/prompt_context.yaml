@@ -3,12 +3,23 @@ problem_description: |
   We are looking for a Python function that implements the core logic for such a decomposition/multiplication algorithm.
 
 function_signature_info: |
-  The target function should be named `decompose_tensor` (as specified in problem_config.yaml under function_details.name).
+  The target function MUST be named `decompose_tensor` (as specified in problem_config.yaml under function_details.name).
   It takes one argument: `tensor_input`.
-  - `tensor_input`: Represents the two 4x4 complex matrices to be multiplied, or the structure that needs to be decomposed to find the multiplication algorithm. The exact representation of this input (e.g., as a specific tensor structure or two separate matrices) will need to be handled by the function. Assume complex numbers can be represented as tuples `(real, imaginary)` or Python's `complex` type.
-  The function must return a tuple: `(decomposed_factors, num_complex_multiplications)`.
-  - `decomposed_factors`: This should represent the algorithm itself, perhaps as a list of intermediate computations or factors, as described in the AlphaEvolve paper (e.g., U, V, W matrices for the decomposition factors M_k = <U_k, A> <V_k, B> <W_k, C_hat>).
-  - `num_complex_multiplications`: An integer stating the total number of complex multiplications performed by the algorithm represented in `decomposed_factors`.
+  - `tensor_input`: This argument is primarily a placeholder. Your `decompose_tensor` function should focus on defining an algorithm, not processing this specific input. You can ignore it or use it for advanced hint processing if explicitly guided.
+  
+  The `decompose_tensor` function MUST return a tuple of exactly two elements:
+  `(multiplication_algorithm_function, num_complex_multiplications)`
+
+  1. `multiplication_algorithm_function`:
+     - This MUST be a callable Python function that you define (e.g., an inner function or a function defined at the same scope and returned by reference).
+     - This callable function MUST accept two arguments: `matrix_a` and `matrix_b`.
+     - `matrix_a` and `matrix_b` will be 4x4 complex matrices, represented as lists of lists of Python `complex` numbers (e.g., `[[complex(1,0), complex(2,1)], ...]`).
+     - This callable function MUST return the resulting 4x4 complex matrix product `C` (also a list of lists of `complex` numbers).
+     - The logic within this callable function embodies your discovered algorithm for matrix multiplication.
+
+  2. `num_complex_multiplications`:
+     - This MUST be an integer representing the total number of distinct complex scalar multiplication operations performed by your `multiplication_algorithm_function` to compute the product matrix C.
+     - Addition, subtraction, and multiplication by constants known at the time of defining the algorithm (e.g., multiplying by `complex(2,0)` or `complex(0,1)`) do NOT count towards this total if they can be optimized away by a compiler or pre-computation. Focus on multiplications between elements derived from `matrix_a` and `matrix_b` or their sums/differences.
 
 constraints_text: |
   - The solution MUST be implemented in pure Python.
@@ -20,37 +31,51 @@ constraints_text: |
   - Efficiency in terms of Python execution speed is secondary to correctness and minimizing complex multiplications, but grossly inefficient solutions should be avoided.
 
 example_code_structure: |
-  # This is just a conceptual guide, not a strict template.
-  def decompose_tensor(tensor_input): 
-      # tensor_input might represent two 4x4 complex matrices A and B
-      # Or it might be a placeholder if the function is to *discover* the U,V,W factors.
+  # This is a conceptual guide for the structure of your `decompose_tensor` function.
+  def decompose_tensor(tensor_input): # tensor_input can be ignored for basic implementations
 
-      # Define U_k, V_k, W_k factors (these are 3-tuples of 2x2 matrices in AlphaEvolve's paper)
-      # For 4x4 complex matrices, the factors would be different and likely more complex.
-      # Example of a single factor computation (conceptual for one M_k):
-      # U1 = [[(c1,c2), (c3,c4)], [(c5,c6), (c7,c8)]] # etc. for V1, W1
-      # These U, V, W would be constants in the discovered algorithm.
+      # Define your algorithm as an inner function or a separate function.
+      # This inner function IS the core of your discovered algorithm.
+      def _multiply_using_discovered_method(matrix_a, matrix_b):
+          # matrix_a and matrix_b are 4x4 lists of lists of complex numbers.
+          # Implement your novel 4x4 complex matrix multiplication here.
+          
+          # Example (Illustrative - this is standard 64-mult, not novel):
+          #   C = [[complex(0,0) for _ in range(4)] for _ in range(4)]
+          #   actual_multiplications_performed_here = 0
+          #   for i in range(4):
+          #       for j in range(4):
+          #           sum_val = complex(0,0)
+          #           for k in range(4):
+          #               # This is one complex multiplication:
+          #               product = matrix_a[i][k] * matrix_b[k][j] 
+          #               actual_multiplications_performed_here += 1
+          #               sum_val += product
+          #           C[i][j] = sum_val
+          #   # In this illustrative example, actual_multiplications_performed_here would be 64.
+          #   return C
 
-      # The function should embody an algorithm. For example, if it were Strassen-like:
-      # M1 = (A11 + A22) * (B11 + B22) # (This is 1 complex multiplication)
-      # M2 = (A21 + A22) * B11        # (This is 1 complex multiplication)
-      # ... (7 such terms for 2x2 real Strassen)
-      # C11 = M1 + M4 - M5 + M7
-      # ... etc.
-      
-      # The actual implementation will likely involve defining the specific set of
-      # summations and products that constitute the new algorithm.
-      # The `decomposed_factors` could be a representation of these steps or U,V,W constants.
-      
-      num_complex_multiplications = 0 # This MUST be accurately counted based on the implemented algorithm.
-      # Increment for each complex multiplication step.
-      
-      # Placeholder for the actual factors/algorithm representation
-      decomposed_factors = [] 
+          # For a real discovered algorithm (e.g., Strassen-like), you would:
+          # 1. Define intermediate terms (M1, M2, ... Mk) using sums/differences of sub-blocks of A and B.
+          # 2. Each Mk calculation involving a product of terms derived from A and B counts as one complex multiplication.
+          # 3. Combine these Mk terms (using only additions/subtractions) to form the elements of the result matrix C.
+          # 4. Return C.
+          # The `num_complex_multiplications` returned by `decompose_tensor` should be k (the number of M terms).
+          
+          # Placeholder: Replace with actual algorithm logic
+          C_result = [[complex(0,0) for _ in range(4)] for _ in range(4)] 
+          # Your algorithm's logic to populate C_result goes here.
+          
+          return C_result
 
-      # The function needs to return a representation of the algorithm (factors)
-      # and the claimed number of complex multiplications.
-      return decomposed_factors, num_complex_multiplications
+      # This is the number of complex multiplications your algorithm uses.
+      # It must accurately reflect the number of multiplications in _multiply_using_discovered_method.
+      # For example, if your algorithm is Strassen-like with 49 multiplications:
+      claimed_number_of_multiplications = 49 # Replace with your algorithm's actual count.
+
+      # Return the algorithm function itself (NOT the result of calling it)
+      # and the claimed number of multiplications.
+      return _multiply_using_discovered_method, claimed_number_of_multiplications
 
 # Additional context that might be useful for the LLM
 meta_context: |

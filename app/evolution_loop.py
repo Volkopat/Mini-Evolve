@@ -176,11 +176,15 @@ async def run_evolution():
                 parent_code = parent_program_data['code_string']
                 parent_id = parent_program_data['program_id']
                 parent_score = parent_program_data['score']
+                parent_eval_results = parent_program_data.get('evaluation_results', {}) # Get parent's eval results
+                parent_previous_error = parent_eval_results.get('error_message') # Get potential error message
+
                 main_logger.debug("  Parent %s/%s (ID: %s, Score: %.4f) preparing children tasks..." % (i+1, len(selected_parents), parent_id[:8], parent_score))
 
                 for _ in range(num_children_per_parent): 
                     dynamic_prompt_context = {
                         'parent_code': parent_code,
+                        'previous_error_feedback': parent_previous_error # Pass it to the prompt context
                     }
                     task = llm_generator.generate_code_variant(context_from_evolution_loop=dynamic_prompt_context, client=client)
                     child_generation_tasks.append(task)
@@ -203,6 +207,10 @@ async def run_evolution():
                 
                 main_logger.debug("    Child %s/%s generated for parent %s. Code (first 200 chars):\n%s..." % (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', child_code_string[:200]))
 
+                # Evaluate the child program
+                main_logger.info("Evaluating child %s/%s (Parent: %s)..." % (idx + 1, len(child_generation_tasks), parent_id_for_child[:8] if parent_id_for_child else 'N/A'))
+                main_logger.debug("Child %s raw code string:\n%s" % (idx + 1, child_code_string)) # Log the child code string
+                
                 eval_results_child = evaluator.evaluate(child_code_string, main_cfg, problem_cfg, current_problem_dir)
                 main_logger.info("    Child %s/%s (Parent: %s): Score=%.4f, Valid=%s" % (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', eval_results_child.get('score', 0.0), eval_results_child.get('is_valid')))
                 if eval_results_child.get('error_message'):

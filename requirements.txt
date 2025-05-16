@@ -6,4 +6,5 @@ Jinja2>=3.0
 # google-generativeai
 # Ruff (for linting, though usually installed globally or as a dev dependency)
 # Black (for formatting, similar to Ruff)
-httpx>=0.20 # For asynchronous HTTP requests 
+httpx>=0.20 # For asynchronous HTTP requests
+python-dotenv 

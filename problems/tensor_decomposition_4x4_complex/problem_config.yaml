@@ -17,6 +17,7 @@ evaluation:
 # Information for the LLM about the function to be generated
 function_details:
   name: "decompose_tensor"
+  input_params_string: "tensor_input" # Defines the parameters for the function signature
   # Input/output description can be added here or in prompt_context.yaml
   # Example:
   # inputs: "A 4x4x4x4 complex tensor (represented as nested lists or numpy array if allowed)"

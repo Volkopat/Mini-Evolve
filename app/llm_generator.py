@@ -4,11 +4,15 @@ import httpx # Added for async
 import asyncio # Added for async
 from jinja2 import Environment, FileSystemLoader, select_autoescape, Template
 import os # For checking templates directory
+from typing import Optional, Tuple # Added for Python 3.9 compatibility
+from dotenv import load_dotenv # Import load_dotenv
 from .logger_setup import get_logger
+
+load_dotenv() # Load environment variables from .env file
 
 # --- Module Level Variables ---
 LAST_USED_PROMPT = "No prompt generated yet."
-prompt_template: Template | None = None
+prompt_template: Optional[Template] = None # For Python 3.9
 main_config = {}
 problem_config = {} # Will hold content from <problem_dir>/problem_config.yaml
 prompt_parts = {} # Will hold content from <problem_dir>/prompt_context.txt or .yaml
@@ -104,12 +108,11 @@ def _initialize_prompt_template():
 
 _initialize_prompt_template()
 
-async def _get_llm_completion(prompt_text: str, client: httpx.AsyncClient) -> tuple[str | None, str]:
-    global LAST_USED_PROMPT, main_config
+async def _get_llm_completion(prompt_text: str, client: httpx.AsyncClient) -> Tuple[Optional[str], str]: # For Python 3.9
+    global LAST_USED_PROMPT, main_config, problem_config
     LAST_USED_PROMPT = prompt_text 
     
     current_llm_config = main_config.get('llm', {})
-    api_key = current_llm_config.get('api_key')
     model_name = current_llm_config.get('model_name')
     provider = current_llm_config.get('provider')
     base_url = current_llm_config.get('base_url')
@@ -124,8 +127,20 @@ async def _get_llm_completion(prompt_text: str, client: httpx.AsyncClient) -> tu
                 print("Error: base_url is required for ollama_local provider.")
                 return None, prompt_text
             
+            api_key_ollama = current_llm_config.get('api_key') # Still get this for ollama
+
+            # Dynamically create system message with the expected function name
+            expected_function_name = problem_config.get('function_details', {}).get('name', 'solve') 
+            system_message_content = (
+                "You are a Python code generation assistant. "
+                "Your sole task is to output ONLY a valid, complete Python code block "
+                "for the function named `%s`. "
+                "Do NOT include any explanations, comments outside the code, "
+                "or any markdown formatting like ```python ... ```."
+            ) % expected_function_name
+
             messages = [
-                {"role": "system", "content": "You are a Python code generation assistant. Your sole task is to output ONLY a valid, complete Python code block that solves the given problem or modifies the parent code. Do NOT include any explanations, comments outside the code, or any markdown formatting like ```python ... ```."},
+                {"role": "system", "content": system_message_content},
                 {"role": "user", "content": prompt_text}
             ]
             
@@ -139,8 +154,9 @@ async def _get_llm_completion(prompt_text: str, client: httpx.AsyncClient) -> tu
             
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer %s" % api_key if api_key else "Bearer ollama" 
             }
+            if api_key_ollama: # Only add Authorization header if api_key is provided for Ollama
+                headers["Authorization"] = "Bearer %s" % api_key_ollama
 
             api_endpoint = base_url.rstrip('/') 
             
@@ -159,7 +175,69 @@ async def _get_llm_completion(prompt_text: str, client: httpx.AsyncClient) -> tu
             if json_response.get("choices") and json_response["choices"][0].get("message"):
                 return json_response["choices"][0]["message"].get("content", "").strip(), prompt_text
             else: # This else corresponds to the if json_response.get("choices")
-                print("Error: LLM response did not contain expected choices or message. Response: %s" % json_response)
+                return None, prompt_text
+        elif provider == "openrouter":
+            api_key_env_var = current_llm_config.get('api_key_env_var')
+            if not api_key_env_var:
+                print("Error: api_key_env_var is required for openrouter provider in config.")
+                return None, prompt_text
+            
+            api_key_openrouter = os.getenv(api_key_env_var)
+            if not api_key_openrouter:
+                print("Error: Could not retrieve API key from environment variable: %s" % api_key_env_var)
+                return None, prompt_text
+
+            if not base_url: # Should be set in config, but as a fallback
+                base_url = "https://openrouter.ai/api/v1"
+            
+            api_endpoint = base_url.rstrip('/') + "/chat/completions"
+
+            # System message (can be adapted if OpenRouter models prefer a different style)
+            expected_function_name = problem_config.get('function_details', {}).get('name', 'solve')
+            system_message_content = (
+                "You are a Python code generation assistant. "
+                "Your sole task is to output ONLY a valid, complete Python code block "
+                "for the function named `%s`. "
+                "Do NOT include any explanations, comments outside the code, "
+                "or any markdown formatting like ```python ... ```."
+            ) % expected_function_name
+            
+            messages = [
+                {"role": "system", "content": system_message_content},
+                {"role": "user", "content": prompt_text} # For text-only, simple content string
+            ]
+
+            payload = {
+                "model": model_name,
+                "messages": messages,
+                "temperature": current_llm_config.get('temperature', 0.7),
+                "max_tokens": current_llm_config.get('max_tokens', 2048), # Ensure this respects model limits
+                # stream is not explicitly in user example for OpenRouter, assuming False
+            }
+
+            headers = {
+                "Authorization": "Bearer %s" % api_key_openrouter,
+                "Content-Type": "application/json"
+            }
+            
+            # Optional headers from config
+            http_referer = current_llm_config.get('http_referer')
+            if http_referer and http_referer != "YOUR_SITE_URL": # Add if defined and not the placeholder
+                headers["HTTP-Referer"] = http_referer
+            
+            x_title = current_llm_config.get('x_title')
+            if x_title and x_title != "YOUR_SITE_NAME": # Add if defined and not the placeholder
+                headers["X-Title"] = x_title
+
+            request_timeout = current_llm_config.get('timeout_seconds', 300.0)
+            response = await client.post(api_endpoint, json=payload, headers=headers, timeout=request_timeout)
+            response.raise_for_status()
+            
+            json_response = response.json()
+            
+            if json_response.get("choices") and json_response["choices"][0].get("message"):
+                return json_response["choices"][0]["message"].get("content", "").strip(), prompt_text
+            else:
                 return None, prompt_text
         else: # This else corresponds to the if provider == "ollama_local"
             print("Unsupported LLM provider: %s" % provider)
@@ -228,14 +306,23 @@ async def generate_code_variant(context_from_evolution_loop: dict, client: httpx
         return None, "PROMPT_TEMPLATE_ERROR_NOT_INITIALIZED"
 
     # Combine all context parts: problem-specific static parts, and dynamic parts from evolution loop
-    final_context = {}
-    final_context.update(prompt_parts) # Loaded from <problem_dir>/prompt_context.yaml
-    final_context.update(context_from_evolution_loop) # e.g., parent_code
+    template_render_context = {
+        "problem": problem_config,
+        "prompt_ctx": prompt_parts,
+        "parent_code": context_from_evolution_loop.get("parent_code"),
+        "previous_error_feedback": context_from_evolution_loop.get("previous_error_feedback")
+    }
 
     try:
-        prompt_text = prompt_template.render(context=final_context)
+        # Ensure problem_config and its nested keys are present before rendering
+        if not problem_config.get('function_details', {}).get('name') or \
+           not problem_config.get('function_details', {}).get('input_params_string'):
+            logger.critical("Missing 'function_details.name' or 'function_details.input_params_string' in problem_config.")
+            return None, "PROBLEM_CONFIG_ERROR_MISSING_FUNCTION_DETAILS"
+        
+        prompt_text = prompt_template.render(template_render_context)
     except Exception as e:
-        logger.error("Error rendering prompt template: %s. Context was: %s" % (e, final_context))
+        logger.error("Error rendering prompt template: %s. Context was: %s" % (e, template_render_context))
         return None, "PROMPT_RENDERING_ERROR: %s" % str(e)
 
     llm_response_content, actual_prompt_used = await _get_llm_completion(prompt_text, client)

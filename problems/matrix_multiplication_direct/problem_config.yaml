@@ -12,6 +12,7 @@ evaluation:
 
 function_details:
   name: "solve"
+  input_params_string: "matrix_a, matrix_b" # Defines the parameters for the function signature
   # problem_description and constraints_text are now primarily in prompt_context.yaml
   # but can be briefly mentioned or used here for other config purposes if necessary.
 

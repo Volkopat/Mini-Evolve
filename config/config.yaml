@@ -1,15 +1,27 @@
 # Configuration for Mini-Evolve
 
-current_problem_directory: "problems/matrix_multiplication_direct" # Specifies the active problem
+current_problem_directory: "problems/tensor_decomposition_4x4_complex" # Specifies the active problem
 
 llm:
-  provider: "ollama_local" # Indicates local Ollama
-  model_name: "gemma3:27b" # Your specific Ollama model
-  # model_name: "qwen3:30b-a3b"
-  base_url: "http://10.1.1.28:11434/v1" # Your Ollama server base URL
-  api_key: "ollama" # Placeholder, as per Ollama local setups
+  provider: "openrouter" # Switched to openrouter
+  # provider: "ollama_local" # Indicates local Ollama
+  # model_name: "qwen3:30b-a3b" # Ollama model
+  # base_url: "http://localhost:11434/v1" # Your Ollama server base URL
+  # api_key: # Optional: Only if your Ollama instance is configured with authentication. Often not needed for local.
+
+  # OpenRouter Configuration
+  # model_name: "deepseek/deepseek-r1:free" # Example model, you can change this
+  model_name: "google/gemini-2.5-pro-preview" # Example model, you can change this
+  base_url: "https://openrouter.ai/api/v1" # Fixed for OpenRouter
+  api_key_env_var: "OPENROUTER_API_KEY" # Environment variable holding your OpenRouter API key
+  # Optional headers for OpenRouter ranking
+  http_referer: "localhost" # Replace with your actual site URL or remove if not needed
+  x_title: "Mini-Evolve" # Replace with your actual site name or remove if not needed
+  
   temperature: 0.7
-  max_tokens: 38912
+  max_tokens: 1000000 # Gemini
+  # max_tokens: 160000 # DeepSeek
+  # max_tokens: 32000 # Ollama
   timeout_seconds: 3600 # Timeout for LLM API requests
 
 evolution_loop:
@@ -24,5 +36,5 @@ database:
   path: "db/program_database.db" # Path for SQLite DB
 
 logging:
-  level: "INFO" # DEBUG, INFO, WARNING, ERROR
+  level: "DEBUG" # DEBUG, INFO, WARNING, ERROR
   file: "log/evolution.log" 
