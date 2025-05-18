@@ -1,6 +1,6 @@
 # Configuration for Mini-Evolve
 
-current_problem_directory: "problems/set_cover" # Specifies the active problem
+current_problem_directory: "problems/chromatic_number_plane" # Specifies the active problem
 
 llm:
   provider: "openrouter" # Switched to openrouter
@@ -31,6 +31,9 @@ llm:
   max_delegation_depth: 1             # New: Max depth of delegation (1 means main LLM delegates, sub-tasks don't delegate further)
   max_sub_tasks_per_step: 3         # New: Max sub-tasks the orchestrator can request at once
   delegation_iteration_limit: 5     # New: Max times orchestrator can re-prompt with sub-task results
+
+  enable_lean_prover_interaction: true # New: Flag to enable Lean prover calls
+  lean_api_url: "http://localhost:8060/run_lean" # New: URL for the Lean Prover API
 
 evolution_loop:
   population_size: 50 # This is more of a target/max, actual size managed by DB

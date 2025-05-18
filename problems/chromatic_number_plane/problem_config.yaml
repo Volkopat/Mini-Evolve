@@ -1,0 +1,47 @@
+problem_name: "Chromatic Number of the Plane"
+problem_description: "Determine the minimum number of colors needed to color the plane such that no two points at unit distance from each other have the same color. This is also known as the Hadwiger-Nelson problem."
+
+function_details:
+  name: "explore_chromatic_number_plane" # Changed name to be more exploratory
+  signature: "explore_chromatic_number_plane(params: dict) -> dict" # Generic signature for exploration
+  input_params_string: "params: dict" # For prompt consistency
+  # The function might return discovered bounds, Lean code snippets, analysis, etc.
+
+evaluation_logic_file: "evaluator_logic.py"
+
+# Seed program: A very basic starting point.
+# The LLM will need to replace this entirely or build significantly upon it.
+seed_program_code: |
+  def explore_chromatic_number_plane(params: dict) -> dict:
+    # params might include things like:
+    # 'task': 'find_lower_bound_configuration', 'max_points': 7
+    # 'task': 'formalize_moser_spindle_in_lean'
+    # 'task': 'verify_coloring', 'points': [...], 'colors': [...], 'unit_distance': 1.0
+    
+    results = {
+        "description": "Initial placeholder for chromatic number of the plane exploration.",
+        "python_analysis": "No analysis performed yet.",
+        "lean_code_generated": None,
+        "bounds_found": {"lower": 1, "upper": "unknown"},
+        "configurations_analyzed": []
+    }
+
+    task = params.get("task", "default_exploration")
+
+    if task == "default_exploration":
+        results["python_analysis"] = "Considered known facts. Lower bound is at least 5, upper bound is 7."
+        results["bounds_found"] = {"lower": 5, "upper": 7}
+        results["lean_code_generated"] = """-- Example: Define a point in Lean
+        -- structure Point where
+        --   x : Float
+        --   y : Float
+        -- deriving Repr
+        """ # End of the string
+
+    # The LLM should significantly expand this function based on the actual task
+    # and its understanding of the problem, potentially using Lean.
+    return results
+
+# Disallowed patterns for Python code (if any, e.g. for security or to guide the LLM)
+# For this problem, perhaps allow most things initially.
+disallowed_patterns_python: [] 

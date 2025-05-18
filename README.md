@@ -7,7 +7,8 @@ Mini-Evolve is a Python-based prototype of an evolutionary coding agent. It leve
 - **Evolutionary Algorithm**: Implements a core loop of selection, mutation (via LLM), and evaluation.
 - **LLM-Powered Code Generation**: Uses an LLM (configurable, e.g., Ollama with various models, OpenRouter) to propose code modifications and new solutions.
 - **Self-Correction**: The LLM can attempt to fix syntax or runtime errors in its own generated code based on evaluation feedback.
-- **Hierarchical Task Delegation**: For complex problems, the LLM can act as an orchestrator, breaking down the main task into sub-tasks, delegating their implementation to other LLM calls, and then integrating the results.
+- **Hierarchical Task Delegation**: For complex problems, the LLM can act as an orchestrator, breaking down the main task into sub-tasks, delegating their implementation to other LLM calls (potentially to specialized sub-agents or different prompts), and then integrating the results. This is facilitated by `app/llm_tools.py`.
+- **Lean Prover Interaction**: Supports problems that involve generating and potentially interacting with Lean code, enabling exploration in formal mathematics.
 - **Modular Problem Definitions**: Problems are self-contained units, each with its own configuration, seed program, evaluation logic, and prompt context.
 - **Automated Evaluation**: Each problem defines its own `evaluator_logic.py` to score generated programs based on specific criteria.
 - **Program Database**: Stores all generated programs, their scores, validity, lineage (parent-child relationships), and other metadata in an SQLite database.
@@ -19,7 +20,7 @@ Mini-Evolve is a Python-based prototype of an evolutionary coding agent. It leve
 ## Project Structure
 ```
 Mini-Evolve/
-├── app/                  # Core application logic (evolution loop, LLM generator, evaluator, DB, selection)
+├── app/                  # Core application logic (evolution loop, LLM generator, evaluator, DB, selection, llm_tools)
 ├── config/               # Configuration files (main config.yaml)
 ├── db/                   # SQLite database (program_database.db)
 ├── docs/                 # Project documentation (implementation details, commands)
@@ -31,7 +32,7 @@ Mini-Evolve/
 │       ├── prompt_context.yaml # Provides detailed context for the LLM
 │       └── evaluator_logic.py  # Contains the problem-specific evaluation function
 ├── reports/              # Generated Markdown reports
-├── templates/            # Jinja2 prompt templates (e.g., code_generation_prompt.jinja, hierarchical_code_generation_prompt.jinja, delegated_subtask_prompt.jinja)
+├── templates/            # Jinja2 prompt templates (e.g., code_generation_prompt.jinja, hierarchical_code_generation_prompt.jinja, delegated_subtask_prompt.jinja, lean_interaction_prompt.jinja)
 ├── tools/                # Utility scripts (view_database.py, generate_report.py)
 ├── requirements.txt      # Project dependencies
 └── README.md             # This file
@@ -68,6 +69,10 @@ Mini-Evolve/
         - `llm.max_delegation_depth` (integer)
         - `llm.max_sub_tasks_per_step` (integer)
         - `llm.delegation_iteration_limit` (integer)
+        - `llm.use_specialized_prompts_for_hierarchical_tasks` (boolean, controls use of e.g. `delegated_subtask_prompt.jinja`)
+        - `llm.lean_interaction.enable` (boolean, overall flag for Lean-related features if needed globally)
+        - `llm.lean_interaction.lean_server_url` (string, if direct Lean server interaction is implemented)
+        - `logging.log_level` can be set to `VERBOSE` for more detailed output.
 
 ## Running Mini-Evolve
 
@@ -110,8 +115,10 @@ Currently available example problems include:
 - `problems/tensor_decomposition_4x4_complex`: Evolves a function for 4x4 complex matrix tensor decomposition, focusing on minimizing complex multiplications.
 - `problems/tsp_heuristic`: Aims to evolve a Python function that provides a heuristic solution to the Traveling Salesperson Problem.
 - `problems/set_cover`: Aims to evolve a Python function to find a minimal set cover.
+- `problems/chromatic_number_plane`: Explores the Chromatic Number of the Plane problem, potentially involving Python for graph theory and Lean for formal sketches. This problem demonstrates hierarchical task delegation and interaction with mathematical concepts.
 
 To add a new problem, create a new directory under `problems/` and populate it with `problem_config.yaml` (including `seed_program_code`), `prompt_context.yaml`, and `evaluator_logic.py`. Then update `current_problem_directory` in `config/config.yaml` to point to your new problem.
+Consider if your problem requires new Jinja templates (e.g., for specific types of Lean interaction or sub-task delegation).
 
 ## Future Work
 - More sophisticated selection and diversity maintenance algorithms.

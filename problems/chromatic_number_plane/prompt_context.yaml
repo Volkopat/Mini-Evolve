@@ -1,0 +1,65 @@
+# Prompt context for the Chromatic Number of the Plane problem
+
+problem_description_detailed: |
+  The Hadwiger-Nelson problem asks for the chromatic number of the plane, denoted χ(ℝ²).
+  This is the minimum number of colors required to color all points in the Euclidean plane (ℝ²)
+  such that no two points that are exactly unit distance apart receive the same color.
+
+  Known bounds:
+  - Lower Bound: It is known that χ(ℝ²) ≥ 5. This was established by Nelson, Isbell, and Moore around 1950,
+    with a common proof involving the Moser Spindle (a 7-vertex graph that requires 4 colors and can be embedded
+    in the plane with unit edge lengths) or the Golomb Graph (a 10-vertex graph also requiring 4 colors).
+    In 2018, Aubrey de Grey found a 1581-vertex unit-distance graph that requires 5 colors, establishing the χ(ℝ²) ≥ 5 bound.
+  - Upper Bound: It is known that χ(ℝ²) ≤ 7. This can be shown by a tiling of the plane with regular hexagons,
+    each of a diameter slightly less than one unit, and coloring them with 7 colors in a repeating pattern.
+
+  The exact value of χ(ℝ²) is unknown, and it is one of the famous open problems in mathematics.
+
+function_signature_info: |
+  The target Python function is `explore_chromatic_number_plane(params: dict) -> dict`.
+  This function should perform tasks related to exploring the chromatic number of the plane.
+  The `params` dictionary can specify a task, for example:
+  - `{"task": "analyze_known_bounds"}`: Return information about known configurations or proofs.
+  - `{"task": "formalize_moser_spindle_in_lean"}`: Attempt to define the Moser Spindle and its properties in Lean.
+  - `{"task": "generate_unit_distance_graph_python", "num_points": 7, "density": 0.5}`: Try to generate a unit distance graph in Python.
+  - `{"task": "verify_coloring_python", "points": [...], "edges": [...], "coloring": {...}}`: Check if a given coloring is valid.
+
+  The function should return a dictionary containing results, which might include:
+  - `description`: A summary of the exploration.
+  - `python_analysis`: Any Python-based analysis or code generated.
+  - `lean_code_generated`: Any Lean code generated (as a string).
+  - `bounds_found`: A dictionary like `{"lower": 5, "upper": 7}`.
+  - `configurations_analyzed`: A list of configurations studied (e.g., names, properties).
+  - `proof_steps_formalized`: Description of any proof elements attempted in Lean.
+
+constraints_text: |
+  - Focus on either analyzing existing knowledge, attempting to formalize configurations or proofs in Lean, or implementing small Python utilities for graph generation/checking related to the problem.
+  - If generating Lean code, ensure it is syntactically valid and aims towards defining relevant geometric or graph-theoretic concepts.
+  - If generating Python code for graph analysis, ensure it is correct and handles geometric aspects like unit distance precisely (e.g., using floating point comparisons with a small epsilon if necessary, though exact representations are preferred if manageable).
+
+rules_and_guidelines: |
+  - Output only the requested information (Python code, Lean code, or delegation requests) as per the main prompt instructions.
+  - Ensure Python code is complete and executable if you choose that option.
+  - Ensure Lean code is complete and ready for execution if you choose that option.
+
+# Example of how to hint at Lean usage for this problem
+lean_usage_hints: |
+  Consider using the Lean Prover for the following:
+  1.  **Define Point and Distance:** Formalize the concept of a point in ℝ² and the Euclidean distance.
+      Example Lean Snippet (conceptual):
+      ```lean
+      structure Point where x : Float y : Float deriving Repr
+      def dist_sq (p1 p2 : Point) : Float := (p1.x - p2.x)^2 + (p1.y - p2.y)^2
+      def is_unit_dist (p1 p2 : Point) : Prop := dist_sq p1 p2 = 1.0
+      ```
+  2.  **Define Graphs:** Represent unit-distance graphs where vertices are points and edges connect points at unit distance.
+  3.  **Formalize Configurations:** Attempt to define known configurations like the Moser Spindle or Golomb Graph in Lean.
+      This would involve defining the vertices (as coordinates or abstractly) and proving their unit-distance relationships.
+  4.  **Graph Coloring:** Define graph coloring and the property of a valid k-coloring.
+  5.  **Prove Properties:** For small configurations, try to prove in Lean that they require a certain number of colors.
+      For example, formalize the proof that the Moser Spindle is not 3-colorable.
+  6.  **State Bounds:** Express the known bounds (χ(ℝ²) ≥ 5 and χ(ℝ²) ≤ 7) as formal statements if possible.
+
+# Example code structure for the Python function (optional, could be very basic)
+example_code_structure: |
+  pass # The LLM should fill this based on the task, problem_config.seed_program_code provides a start 

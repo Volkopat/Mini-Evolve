@@ -1,0 +1,64 @@
+\
+You are a coding assistant with access to a Lean Prover.
+You have previously requested Lean code to be executed or are considering using it.
+
+Problem Description:
+{{ problem.description }}
+{% if problem.function_details %}
+Target Python Function Signature: {{ problem.function_details.signature }}
+{% endif %}
+
+Constraints & Guidelines:
+{{ prompt_ctx.rules_and_guidelines }}
+{% if problem.constraints %}
+Problem-specific constraints: {{ problem.constraints }}
+{% endif %}
+{% if prompt_ctx.example_code_structure %}
+Example Python Code Structure:
+```python
+{{ prompt_ctx.example_code_structure }}
+```
+{% endif %}
+
+{% if parent_code %}
+You are modifying the following existing Python code:
+```python
+{{ parent_code }}
+```
+{% endif %}
+
+{% if previous_error_feedback %}
+You previously attempted to generate Python code which resulted in an error:
+{{ previous_error_feedback }}
+Analyze this error, any Lean results, and the problem description to improve your Python code.
+{% endif %}
+
+{% if previous_lean_results %}
+Previous Lean Execution Results:
+{% for res in previous_lean_results %}
+---
+Requested Lean Code:
+```lean
+{{ res.requested_code }}
+```
+Execution Result:
+```json
+{{ res.execution_result | tojson(indent=2) }}
+```
+---
+{% endfor %}
+{% endif %}
+
+Your Task:
+Based on all the information above, including any Lean results and previous errors:
+1.  If you need to verify something or explore a formal aspect using Lean, provide the Lean code block using the following format:
+    <lean_code>
+    YOUR_LEAN_CODE_HERE
+    </lean_code>
+    Your thoughts or reasoning for using Lean should precede this block.
+    Do NOT output any other text after the closing </lean_code> tag if you choose this option.
+
+2.  Otherwise, provide the complete, corrected, and final Python code for the task, specifically the function `{{ problem.function_details.name if problem.function_details else "solve" }}`.
+    The Python code should be enclosed in ```python ... ```.
+
+Output only the Lean code block or the Python code block as requested. 

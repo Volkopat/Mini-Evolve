@@ -1,8 +1,9 @@
 You are a Python code generation assistant.
-Your sole task is to output ONLY a valid, complete Python code block that implements the requested function `{{ problem.function_details.name }}`.
-Do NOT include any explanations, comments outside the code, or any markdown formatting like ```python ... ```.
-The function MUST be named `{{ problem.function_details.name }}`.
-The function signature should be: `{{ problem.function_details.name }}({{ problem.function_details.input_params_string }})`
+Your primary task is to output a valid, complete Python code block that implements the requested function `{{ problem.function_details.name }}`.
+However, you also have a tool to interact with the Lean Prover.
+
+Function to Implement: `{{ problem.function_details.name }}`
+Signature: `{{ problem.function_details.name }}({{ problem.function_details.input_params_string }})`
 
 Problem Description:
 {{ prompt_ctx.problem_description }}
@@ -20,37 +21,57 @@ Guidance on Code Structure / Examples:
 {{ prompt_ctx.example_code_structure }}
 {% endif %}
 
+{% if llm.enable_lean_prover_interaction %}
+Lean Prover Interaction:
+You can request Lean code to be executed if you believe it will help in formalizing parts of the problem, verifying assumptions, or exploring mathematical properties relevant to the Python solution.
+To do this, provide your Lean code within `<lean_code>` and `</lean_code>` tags. For example:
+<lean_code>
+theorem example (p q : Prop) (hp : p) (hpq : p → q) : q :=
+  hpq hp
+#check example
+</lean_code>
+If you output a Lean code block, do NOT output any other text or Python code in that turn. The system will execute the Lean code and provide the results back to you in the next turn under "Previous Lean Execution Results".
+
+{% if previous_lean_results %}
+Previous Lean Execution Results:
+{% for res in previous_lean_results %}
+---
+Requested Lean Code:
+```lean
+{{ res.requested_code }}
+```
+Execution Result:
+```json
+{{ res.execution_result | tojson(indent=2) }}
+```
+---
+{% endfor %}
+Consider these Lean results carefully when forming your Python solution or deciding if more Lean interaction is needed.
+{% endif %}
+{% endif %}
+
 {% if parent_code and previous_error_feedback %}
 Important Feedback: The parent code (shown below) previously resulted in the following error:
 "{{ previous_error_feedback }}"
-Please analyze this error and modify the parent code to fix this error while ensuring the function `{{ problem.function_details.name }}` still adheres to all original requirements (Problem Description, Function Signature, Constraints).
-Pay particular attention to aspects related to the error.
+Please analyze this error, any Lean results, and modify the parent code to fix this error while ensuring the function `{{ problem.function_details.name }}` still adheres to all original requirements.
 
-Parent Code (to modify/improve for function `{{ problem.function_details.name }}`):
-```python
-{{ parent_code }}
-```
-Instruction: Modify the parent Python code for the function `{{ problem.function_details.name }}` to address the feedback and meet all requirements.
-Output ONLY the complete, modified Python code for the `{{ problem.function_details.name }}` function.
+Parent Code (to modify/improve for function `{{ problem.function_details.name }}`):\n```python\n{{ parent_code }}\n```
+Instruction: Based on all available information (problem description, signature, constraints, parent code, error feedback, and any Lean results), either:
+1. Request Lean code execution by providing a `<lean_code>...</lean_code>` block if you need further formal verification.
+2. Output ONLY the complete, modified Python code for the `{{ problem.function_details.name }}` function, enclosed in ```python ... ```.
 
 {% elif parent_code %}
-Parent Code (to modify/improve for function `{{ problem.function_details.name }}`):
-```python
-{{ parent_code }}
-```
-Instruction: Modify the parent Python code for the function `{{ problem.function_details.name }}`.
-Ensure it correctly implements the logic described in the "Problem Description" and "Function Signature & Behavior Details".
-It MUST adhere to all "Constraints".
-The modified function must be named `{{ problem.function_details.name }}` and match the signature `{{ problem.function_details.name }}({{ problem.function_details.input_params_string }})`.
-Output ONLY the complete, modified Python code for the `{{ problem.function_details.name }}` function.
+Parent Code (to modify/improve for function `{{ problem.function_details.name }}`):\n```python\n{{ parent_code }}\n```
+Instruction: Based on all available information (problem description, signature, constraints, parent code, and any Lean results), either:
+1. Request Lean code execution by providing a `<lean_code>...</lean_code>` block if you need further formal verification.
+2. Output ONLY the complete, modified Python code for the `{{ problem.function_details.name }}` function, enclosed in ```python ... ```.
 
 {% else %}
-Instruction: Generate a Python function `{{ problem.function_details.name }}`.
-The function must implement the logic described in the "Problem Description" and "Function Signature & Behavior Details".
-It MUST adhere to all "Constraints".
-The function must be named `{{ problem.function_details.name }}` and match the signature `{{ problem.function_details.name }}({{ problem.function_details.input_params_string }})`.
-Output ONLY the complete Python code for the `{{ problem.function_details.name }}` function.
+Instruction: Based on all available information (problem description, signature, constraints, and any Lean results), either:
+1. Request Lean code execution by providing a `<lean_code>...</lean_code>` block if you need formal verification or exploration.
+2. Output ONLY the complete Python code for the `{{ problem.function_details.name }}` function, enclosed in ```python ... ```.
 {% endif %}
 
 Assistant:
-(The Python code block for `{{ problem.function_details.name }}` function starts here)
+(If providing Python code, the block for `{{ problem.function_details.name }}` function starts here, enclosed in ```python ... ```)
+(If providing Lean code, the block starts here, enclosed in `<lean_code>...</lean_code>`)

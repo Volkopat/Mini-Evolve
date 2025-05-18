@@ -18,18 +18,52 @@ Guidance on Code Structure / Examples (for the main function):
 {{ prompt_ctx.example_code_structure }}
 {% endif %}
 
-You have two options:
+{% if llm.enable_lean_prover_interaction %}
+Lean Prover Interaction (Tool Available):
+You can request Lean code to be executed if you believe it will help in formalizing parts of the problem, verifying assumptions, or exploring mathematical properties relevant to the Python solution for `{{ problem.function_details.name }}`.
+To do this, provide your Lean code within `<lean_code>` and `</lean_code>` tags. For example:
+<lean_code>
+theorem example (p q : Prop) (hp : p) (hpq : p → q) : q :=
+  hpq hp
+#check example
+</lean_code>
+If you output a Lean code block, do NOT output any other text, Python code, or delegation requests in that turn. The system will execute the Lean code and provide the results back to you in the next turn under "Previous Lean Execution Results".
 
-1.  **Direct Solution:** If the problem is simple enough, provide the complete Python code for the function `{{ problem.function_details.name }}` directly.
-    In this case, your output should be ONLY the Python code block.
+{% if previous_lean_results %}
+Previous Lean Execution Results:
+{% for res in previous_lean_results %}
+---
+Requested Lean Code:
+```lean
+{{ res.requested_code }}
+```
+Execution Result:
+```json
+{{ res.execution_result | tojson(indent=2) }}
+```
+---
+{% endfor %}
+Consider these Lean results carefully when forming your Python solution, deciding if more Lean interaction is needed, or when defining sub-tasks.
+{% endif %}
+{% endif %}
 
-2.  **Delegate Sub-Tasks:** If the problem is complex, you can break it down into smaller, independent sub-tasks and delegate them.
+You have the following options:
+
+1.  **Direct Solution:** If the problem is simple enough, or you have integrated all necessary sub-task/Lean results, provide the complete Python code for the function `{{ problem.function_details.name }}` directly.
+    In this case, your output should be ONLY the Python code block, enclosed in ```python ... ```.
+
+2.  **Delegate Sub-Tasks:** If the problem is complex, you can break it down into smaller, independent Python sub-tasks and delegate them.
     To delegate, output one or more `<delegate_subtask>` blocks. Each block MUST include:
     - `<description>`: A clear description of the sub-task.
     - `<expected_signature>`: The Python function signature for the sub-task (e.g., `def helper_function(param1, param2) -> str:`).
     - `<sub_task_id>`: A unique ID you create for this sub-task (e.g., `sub_01`, `helper_A`).
     You can request up to {{ llm.max_sub_tasks_per_step }} sub-tasks at a time.
-    Do NOT output any other Python code if you are delegating. Only output the `<delegate_subtask>` blocks.
+    Do NOT output any other Python code or Lean code if you are delegating. Only output the `<delegate_subtask>` blocks.
+
+{% if llm.enable_lean_prover_interaction %}
+3.  **Execute Lean Code:** If you need to use the Lean Prover, output a `<lean_code>...</lean_code>` block as described above.
+    Do NOT output Python code or delegation requests in the same response.
+{% endif %}
 
 {% if previous_delegation_results %}
 Previously, you requested the following sub-tasks, and here are the results:
@@ -43,10 +77,8 @@ Returned Code:
 ```
 ---
 {% endfor %}
-Now, please either:
-a. Integrate these results to form the final solution for `{{ problem.function_details.name }}`. Output ONLY the complete Python code.
-b. Request further different sub-tasks if necessary (respecting delegation depth and iteration limits).
-c. If integration failed or a sub-task returned an error, you can try to request a corrected version of that sub-task or an alternative.
+Now, please choose one of the options (Direct Solution, Delegate Sub-Tasks{% if llm.enable_lean_prover_interaction %}, or Execute Lean Code{% endif %}).
+Consider if you need to integrate these results, request further sub-tasks, or use Lean.
 {% endif %}
 
 {% if parent_code and previous_error_feedback %}
@@ -57,18 +89,21 @@ The following code was attempted:
 ```
 And it produced this error:
 "{{ previous_error_feedback }}"
-Please analyze this error. You can choose to fix it directly, or delegate parts of the fix as sub-tasks.
+Please analyze this error. You can choose to fix it directly (Option 1), delegate parts of the fix (Option 2){% if llm.enable_lean_prover_interaction %}, or use Lean to understand the issue (Option 3){% endif %}.
 Your primary goal is to produce a corrected, complete Python code block for `{{ problem.function_details.name }}`.
 {% elif parent_code %}
 You are modifying/improving existing code for `{{ problem.function_details.name }}`:
 ```python
 {{ parent_code }}
 ```
-Consider if you can solve it directly or if delegation would be beneficial.
+Consider your options: Direct Solution, Delegate Sub-Tasks{% if llm.enable_lean_prover_interaction %}, or Execute Lean Code{% endif %}.
 {% endif %}
 
-Output ONLY the Python code for `{{ problem.function_details.name }}` OR one or more `<delegate_subtask>` blocks as described.
-Do NOT include any explanations outside the code block or the delegation blocks.
+Based on all available information, output ONLY your chosen action: 
+- The Python code for `{{ problem.function_details.name }}` (enclosed in ```python ... ```), OR
+- One or more `<delegate_subtask>` blocks, OR
+{% if llm.enable_lean_prover_interaction %}- A `<lean_code>...</lean_code>` block.{% endif %}
+Do NOT include any explanations outside these blocks.
 
 Assistant:
 (Your response starts here) 
