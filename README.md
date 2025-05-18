@@ -5,13 +5,15 @@ Mini-Evolve is a Python-based prototype of an evolutionary coding agent. It leve
 
 ## Key Features
 - **Evolutionary Algorithm**: Implements a core loop of selection, mutation (via LLM), and evaluation.
-- **LLM-Powered Code Generation**: Uses an LLM (configurable, e.g., Ollama with various models) to propose code modifications and new solutions.
+- **LLM-Powered Code Generation**: Uses an LLM (configurable, e.g., Ollama with various models, OpenRouter) to propose code modifications and new solutions.
+- **Self-Correction**: The LLM can attempt to fix syntax or runtime errors in its own generated code based on evaluation feedback.
+- **Hierarchical Task Delegation**: For complex problems, the LLM can act as an orchestrator, breaking down the main task into sub-tasks, delegating their implementation to other LLM calls, and then integrating the results.
 - **Modular Problem Definitions**: Problems are self-contained units, each with its own configuration, seed program, evaluation logic, and prompt context.
 - **Automated Evaluation**: Each problem defines its own `evaluator_logic.py` to score generated programs based on specific criteria.
 - **Program Database**: Stores all generated programs, their scores, validity, lineage (parent-child relationships), and other metadata in an SQLite database.
 - **Asynchronous Operations**: Utilizes `asyncio` for concurrent LLM API calls, significantly speeding up the generation phase.
 - **Configuration Management**: Uses YAML files for main system settings (`config/config.yaml`) and problem-specific parameters (`problems/<problem_name>/problem_config.yaml`).
-- **Logging**: Comprehensive logging to console and file (`log/evolution.log`).
+- **Logging**: Comprehensive logging to console and file (`log/evolution.log`) with multiple levels (DEBUG, VERBOSE, INFO, WARNING, ERROR).
 - **Reporting**: Generates detailed Markdown reports of evolutionary runs, including statistics, best programs, and evolutionary lineage (`tools/generate_report.py`).
 
 ## Project Structure
@@ -26,11 +28,10 @@ Mini-Evolve/
 ├── problems/             # Modular problem definitions
 │   └── <problem_name>/   # Specific problem directory
 │       ├── problem_config.yaml # Contains problem params, function details, and seed_program_code
-│       ├── prompt_context.yaml
-│       ├── evaluator_logic.py # Formerly also contained seed_program.py, now in problem_config.yaml
-│       └── evaluator_logic.py
+│       ├── prompt_context.yaml # Provides detailed context for the LLM
+│       └── evaluator_logic.py  # Contains the problem-specific evaluation function
 ├── reports/              # Generated Markdown reports
-├── templates/            # Jinja2 prompt templates
+├── templates/            # Jinja2 prompt templates (e.g., code_generation_prompt.jinja, hierarchical_code_generation_prompt.jinja, delegated_subtask_prompt.jinja)
 ├── tools/                # Utility scripts (view_database.py, generate_report.py)
 ├── requirements.txt      # Project dependencies
 └── README.md             # This file
@@ -56,11 +57,17 @@ Mini-Evolve/
     - **LLM Configuration**:
         - Set `llm.provider` (e.g., "ollama_local", "openrouter").
         - For "ollama_local", update `llm.base_url` if Ollama is not running locally or on the default port.
-        - For "openrouter", ensure `llm.api_key_env_var` points to the environment variable holding your OpenRouter API key (e.g., "OPENROUTER_API_KEY"). Load this via a `.env` file or set it in your environment.
+        - For "openrouter", ensure `llm.api_key_env_var` points to the environment variable holding your OpenRouter API key (e.g., "OPENROUTER_API_KEY"). It's recommended to load this via a `.env` file in the project root (create one if it doesn't exist, and add `OPENROUTER_API_KEY="your_key_here"`), or set it in your shell environment.
         - Specify the `llm.model_name` you wish to use (e.g., "mistral", "llama3" for Ollama; "google/gemini-2.5-pro-preview" for OpenRouter).
     - **Problem Selection**:
         - Set `current_problem_directory` to point to the desired problem in the `problems/` directory (e.g., `problems/matrix_multiplication_direct`).
-    - Review other settings like database path, logging preferences, and evolutionary parameters.
+    - Review other settings like database path, logging preferences, evolutionary parameters, and new features:
+        - `llm.enable_self_correction` (boolean)
+        - `llm.max_correction_attempts` (integer)
+        - `llm.enable_hierarchical_generation` (boolean)
+        - `llm.max_delegation_depth` (integer)
+        - `llm.max_sub_tasks_per_step` (integer)
+        - `llm.delegation_iteration_limit` (integer)
 
 ## Running Mini-Evolve
 
@@ -70,7 +77,7 @@ To start the evolutionary process for the problem specified in `config/config.ya
 python3 -m app.evolution_loop
 ```
 This will:
-1. Initialize or clear the program database (based on `db_reinitialize_on_startup` in `config.yaml`).
+1. Remove and re-initialize the program database at the start of the run.
 2. Load the seed program for the selected problem.
 3. Run the evolutionary loop for the configured number of generations, generating, evaluating, and selecting programs.
 4. Log progress to the console and `log/evolution.log`.
@@ -95,7 +102,7 @@ The report will be saved in the `reports/` directory, named with the problem and
 ## Available Problems
 The system is designed to be modular. Problems are located in the `problems/` directory. Each problem sub-directory contains:
 - `problem_config.yaml`: Defines problem-specific parameters like target metrics, evaluation timeouts, function signatures, and importantly, the `seed_program_code`.
-- `prompt_context.yaml`: Provides detailed context for the LLM, including the problem description, constraints, examples, and desired output format.
+- `prompt_context.yaml`: Provides detailed context for the LLM, including the problem description, constraints, examples, and desired output format. This is crucial for guiding the LLM effectively.
 - `evaluator_logic.py`: Contains the `evaluate_program` function, which takes a candidate program module and returns a dictionary of evaluation results (including a `score` and `is_valid` flag).
 
 Currently available example problems include:
@@ -111,6 +118,7 @@ To add a new problem, create a new directory under `problems/` and populate it w
 - Integration with formal testing frameworks (e.g., `pytest`).
 - UI for experiment tracking and visualization.
 - Support for more complex problem types and programming languages.
+- Enhanced error analysis and feedback mechanisms for the LLM.
 
 ## Contributing
 Contributions are welcome! Please feel free to fork the repository, make changes, and submit a pull request. For major changes, please open an issue first to discuss what you would like to change. 
