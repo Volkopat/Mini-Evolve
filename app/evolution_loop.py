@@ -10,6 +10,7 @@ from . import llm_generator # This now loads all configs (main, problem, prompt_
 from . import evaluator
 from . import selection
 from . import logger_setup # This will configure logging upon import
+from .logger_setup import VERBOSE_LEVEL_NUM # Import the VERBOSE level
 
 # --- Configuration Loading ---
 CONFIG_FILE = "config/config.yaml"
@@ -157,6 +158,7 @@ async def run_evolution():
     async with httpx.AsyncClient() as client: 
         for gen in range(1, num_generations + 1):
             main_logger.info("---- Generation %s/%s Starting ----" % (gen, num_generations))
+            main_logger.log(VERBOSE_LEVEL_NUM, "Database path for parent selection: %s", db_path)
 
             selected_parents = selection.select_parents(
                 num_parents=num_parents_to_select, 
@@ -183,6 +185,10 @@ async def run_evolution():
                 parent_eval_results = parent_program_data.get('evaluation_results', {}) # Get parent's eval results
                 parent_previous_error = parent_eval_results.get('error_message') # Get potential error message
 
+                main_logger.log(VERBOSE_LEVEL_NUM, "Selected Parent %s/%s (ID: %s, Score: %.4f)\nParent Code:\n%s", 
+                                i+1, len(selected_parents), parent_id[:8] if parent_id else 'N/A', 
+                                parent_score, parent_code)
+
                 main_logger.debug("  Parent %s/%s (ID: %s, Score: %.4f) preparing children tasks..." % (i+1, len(selected_parents), parent_id[:8], parent_score))
 
                 for _ in range(num_children_per_parent): 
@@ -190,7 +196,11 @@ async def run_evolution():
                         'parent_code': parent_code,
                         'previous_error_feedback': parent_previous_error # Pass it to the prompt context
                     }
-                    task = llm_generator.generate_code_variant(context_from_evolution_loop=dynamic_prompt_context, client=client)
+                    task = llm_generator.generate_code_variant(
+                        context_from_evolution_loop=dynamic_prompt_context, 
+                        client=client,
+                        current_delegation_depth=0 # Start top-level calls at depth 0
+                    )
                     child_generation_tasks.append(task)
                     parent_info_for_tasks.append({'parent_id': parent_id})
             
@@ -209,34 +219,107 @@ async def run_evolution():
                     main_logger.warning("    Child generation %s/%s for parent %s failed (LLM returned None or bad format). Prompt used (first 100 chars): %s..." % (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', prompt_used_for_child[:100]))
                     continue
                 
+                main_logger.log(VERBOSE_LEVEL_NUM, "Initial Child Code %s/%s (Parent: %s)\nPrompt (first 300 chars):\n%s...\nChild Code:\n%s", 
+                                children_processed_count, len(generated_children_results), 
+                                parent_id_for_child[:8] if parent_id_for_child else 'N/A', 
+                                prompt_used_for_child[:300], child_code_string)
                 main_logger.debug("    Child %s/%s generated for parent %s. Code (first 200 chars):\n%s..." % (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', child_code_string[:200]))
 
                 # Evaluate the child program
                 main_logger.info("Evaluating child %s/%s (Parent: %s)..." % (idx + 1, len(child_generation_tasks), parent_id_for_child[:8] if parent_id_for_child else 'N/A'))
                 main_logger.debug("Child %s raw code string:\n%s" % (idx + 1, child_code_string)) # Log the child code string
                 
-                eval_results_child = evaluator.evaluate(child_code_string, main_cfg, problem_cfg, current_problem_dir)
-                main_logger.info("    Child %s/%s (Parent: %s): Score=%.4f, Valid=%s" % (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', eval_results_child.get('score', 0.0), eval_results_child.get('is_valid')))
-                if eval_results_child.get('error_message'):
-                     main_logger.warning("    Child eval error: %s" % eval_results_child.get('error_message'))
+                current_code_to_evaluate = child_code_string
+                current_eval_results = evaluator.evaluate(current_code_to_evaluate, main_cfg, problem_cfg, current_problem_dir)
+                current_prompt_for_db = prompt_used_for_child
 
-                if eval_results_child.get('is_valid'):
+                # --- Self-correction loop ---
+                llm_settings = main_cfg.get('llm', {})
+                enable_self_correction = llm_settings.get('enable_self_correction', False)
+                max_correction_attempts = llm_settings.get('max_correction_attempts', 3)
+
+                if enable_self_correction and not current_eval_results.get('is_valid', False):
+                    error_message = current_eval_results.get('error_message', '')
+                    # Define correctable errors: syntax errors or basic runtime errors from initial exec by app/evaluator.py
+                    is_correctable_error_type = (
+                        "SyntaxError:" in error_message or 
+                        "Error during program execution/setup:" in error_message or
+                        ("Error in problem-specific evaluator" in error_message and "Function 'solve' not found" in error_message) # Correct if function not defined
+                    )
+
+                    if is_correctable_error_type:
+                        main_logger.info("Child %s/%s (Parent: %s) has a correctable error: '%s'. Attempting self-correction." % 
+                                         (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', error_message.splitlines()[0]))
+                        
+                        for attempt in range(max_correction_attempts):
+                            main_logger.info("  Self-correction attempt %s/%s..." % (attempt + 1, max_correction_attempts))
+                            correction_context = {
+                                'parent_code': current_code_to_evaluate, # The code that failed
+                                'previous_error_feedback': error_message # The error it produced
+                            }
+                            corrected_code_string, correction_prompt_used = await llm_generator.generate_code_variant(
+                                context_from_evolution_loop=correction_context, 
+                                client=client,
+                                current_delegation_depth=0 # Self-correction restarts orchestration at depth 0
+                            )
+
+                            if corrected_code_string is None:
+                                main_logger.warning("    Self-correction attempt %s/%s: LLM returned None. Aborting correction for this child." % (attempt + 1, max_correction_attempts))
+                                break # Stop trying to correct this child if LLM fails to return code
+                            
+                            main_logger.log(VERBOSE_LEVEL_NUM, "Self-Correction Attempt %s/%s - Code (Parent: %s):\nCorrection Prompt (first 300 chars):\n%s...\nCorrected Code:\n%s", 
+                                            attempt + 1, max_correction_attempts, parent_id_for_child[:8] if parent_id_for_child else 'N/A',
+                                            correction_prompt_used[:300], corrected_code_string)
+                            main_logger.debug("    Self-correction attempt %s/%s: Received new code (first 200 chars):\n%s..." % (attempt + 1, max_correction_attempts, corrected_code_string[:200]))
+                            temp_eval_results = evaluator.evaluate(corrected_code_string, main_cfg, problem_cfg, current_problem_dir)
+
+                            current_code_to_evaluate = corrected_code_string
+                            current_eval_results = temp_eval_results
+                            current_prompt_for_db = correction_prompt_used # Log the prompt that led to this version
+
+                            if temp_eval_results.get('is_valid', False):
+                                main_logger.info("    Self-correction attempt %s/%s successful: Program is now valid." % (attempt + 1, max_correction_attempts))
+                                break # Correction successful
+                            else:
+                                new_error_message = temp_eval_results.get('error_message', '')
+                                if new_error_message == error_message:
+                                    main_logger.warning("    Self-correction attempt %s/%s: Error persisted unchanged: '%s'." % 
+                                                      (attempt + 1, max_correction_attempts, new_error_message.splitlines()[0]))
+                                else:
+                                    main_logger.info("    Self-correction attempt %s/%s: Error changed to: '%s'. Continuing if attempts left." % 
+                                                     (attempt + 1, max_correction_attempts, new_error_message.splitlines()[0]))
+                                    error_message = new_error_message # Update error for next attempt or final logging
+                                
+                                if attempt == max_correction_attempts - 1:
+                                    main_logger.warning("    Self-correction failed after %s attempts. Using last generated code for DB entry." % max_correction_attempts)
+                        # End of correction loop
+                # End of self-correction block
+
+                # Log final evaluation results (either from initial eval or after correction attempts)
+                main_logger.info("    Child %s/%s (Parent: %s) Final Eval: Score=%.4f, Valid=%s" % 
+                                 (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', 
+                                  current_eval_results.get('score', 0.0), current_eval_results.get('is_valid')))
+                if current_eval_results.get('error_message') and not current_eval_results.get('is_valid'): # Only log error if still invalid
+                     main_logger.warning("    Child %s/%s Final Error: %s" % (children_processed_count, len(generated_children_results), current_eval_results.get('error_message')))
+
+                # Add the program (potentially corrected) to the database
+                if current_eval_results.get('is_valid'): # Add to DB only if valid after all attempts
                     child_id = program_db.add_program(
-                        code_string=child_code_string,
-                        score=eval_results_child.get('score'),
-                        is_valid=eval_results_child.get('is_valid'),
+                        code_string=current_code_to_evaluate, # Use the potentially corrected code
+                        score=current_eval_results.get('score'),
+                        is_valid=current_eval_results.get('is_valid'),
                         generation_discovered=gen,
                         parent_id=parent_id_for_child, 
-                        llm_prompt=prompt_used_for_child, 
-                        evaluation_results=eval_results_child,
+                        llm_prompt=current_prompt_for_db, # Use the prompt that led to this version
+                        evaluation_results=current_eval_results,
                         db_path=db_path
                     )
                     if child_id:
-                        main_logger.info("    Added new valid child to DB: ID=%s, Score=%.4f" % (child_id[:8] if child_id else 'N/A', eval_results_child.get('score',0.0)))
+                        main_logger.info("    Added new valid child to DB: ID=%s, Score=%.4f" % (child_id[:8] if child_id else 'N/A', current_eval_results.get('score',0.0)))
                     else:
-                        main_logger.info("    Valid child was a duplicate (by normalized hash), not added. Score=%.4f" % eval_results_child.get('score',0.0))
+                        main_logger.info("    Valid child was a duplicate (by normalized hash), not added. Score=%.4f" % current_eval_results.get('score',0.0))
                 else:
-                    main_logger.info("    Child code was invalid. Not adding to DB. Error: %s" % eval_results_child.get('error_message', 'N/A'))
+                    main_logger.info("    Child code (after potential corrections) was invalid or failed. Not adding to DB. Error: %s" % current_eval_results.get('error_message', 'N/A'))
 
             best_programs_overall = program_db.get_best_n_programs(n=1, db_path=db_path)
             if best_programs_overall:

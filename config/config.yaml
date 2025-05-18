@@ -1,6 +1,6 @@
 # Configuration for Mini-Evolve
 
-current_problem_directory: "problems/matrix_multiplication_direct" # Specifies the active problem
+current_problem_directory: "problems/set_cover" # Specifies the active problem
 
 llm:
   provider: "openrouter" # Switched to openrouter
@@ -11,7 +11,8 @@ llm:
 
   # OpenRouter Configuration
   # model_name: "deepseek/deepseek-r1:free" # Example model, you can change this
-  model_name: "google/gemini-2.5-pro-preview" # Example model, you can change this
+  # model_name: "google/gemini-2.5-pro-preview" # Example model, you can change this
+  model_name: "google/gemini-2.5-flash-preview:thinking"
   base_url: "https://openrouter.ai/api/v1" # Fixed for OpenRouter
   api_key_env_var: "OPENROUTER_API_KEY" # Environment variable holding your OpenRouter API key
   # Optional headers for OpenRouter ranking
@@ -22,6 +23,14 @@ llm:
   max_tokens: 1000000 # Gemini
   # max_tokens: 160000 # Note: OpenRouter models have their own max token limits, ensure this is compatible or adjust per model
   timeout_seconds: 3600 # Timeout for LLM API requests
+  enable_self_correction: true # New: Whether to allow LLM to try and fix its own syntax/runtime errors
+  max_correction_attempts: 3   # New: Max attempts for self-correction
+
+  # Hierarchical Generation / Task Delegation Settings
+  enable_hierarchical_generation: true # New: Enable LLM to delegate sub-tasks
+  max_delegation_depth: 1             # New: Max depth of delegation (1 means main LLM delegates, sub-tasks don't delegate further)
+  max_sub_tasks_per_step: 3         # New: Max sub-tasks the orchestrator can request at once
+  delegation_iteration_limit: 5     # New: Max times orchestrator can re-prompt with sub-task results
 
 evolution_loop:
   population_size: 50 # This is more of a target/max, actual size managed by DB
@@ -35,5 +44,5 @@ database:
   path: "db/program_database.db" # Path for SQLite DB
 
 logging:
-  level: "DEBUG" # DEBUG, INFO, WARNING, ERROR
+  level: "VERBOSE" # DEBUG, VERBOSE, INFO, WARNING, ERROR
   file: "log/evolution.log" 
