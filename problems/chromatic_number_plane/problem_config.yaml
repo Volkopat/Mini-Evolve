@@ -44,4 +44,27 @@ seed_program_code: |
 
 # Disallowed patterns for Python code (if any, e.g. for security or to guide the LLM)
 # For this problem, perhaps allow most things initially.
-disallowed_patterns_python: [] 
+disallowed_patterns_python: []
+
+seed_prompt_string: |
+  You are a Python programming expert. Your task is to implement the `explore_chromatic_number_plane` function.
+  Focus on analyzing the problem, potentially generating Lean code for formalization, or implementing Python utilities for graph analysis.
+  The function should return a dictionary with analysis, Lean code, or discovered bounds.
+
+seed_evaluator_code: |
+  def evaluate_program(program_module, problem_config, main_config):
+      results = {
+          'score': 0.0,
+          'is_valid': False,
+          'error_message': None,
+      }
+      target_function_name = problem_config.get("function_details", {}).get("name", "explore_chromatic_number_plane")
+      if not hasattr(program_module, target_function_name):
+          results['error_message'] = f"Function '{target_function_name}' not found."
+          return results
+      
+      # Basic check: if the function exists, give it a minimal valid score
+      results['score'] = 0.1
+      results['is_valid'] = True
+      results['error_message'] = "Function found, basic validity check passed."
+      return results

@@ -12,7 +12,8 @@ llm:
   # OpenRouter Configuration
   # model_name: "deepseek/deepseek-r1:free" # Example model, you can change this
   # model_name: "google/gemini-2.5-pro-preview" # Example model, you can change this
-  model_name: "google/gemini-2.5-flash-preview:thinking"
+  # model_name: "google/gemini-2.5-flash-preview:thinking"
+  model_name: "google/gemini-2.5-flash-preview-05-20"
   base_url: "https://openrouter.ai/api/v1" # Fixed for OpenRouter
   api_key_env_var: "OPENROUTER_API_KEY" # Environment variable holding your OpenRouter API key
   # Optional headers for OpenRouter ranking
@@ -35,16 +36,26 @@ llm:
   enable_lean_prover_interaction: true # New: Flag to enable Lean prover calls
   lean_api_url: "http://localhost:8060/run_lean" # New: URL for the Lean Prover API
 
+  enable_diff_generation: true
+
+map_elites:
+  enable: true
+  grid_resolution: [10, 10] # Example: 10x10 grid for 2 behavioral descriptors
+
 evolution_loop:
   population_size: 50 # This is more of a target/max, actual size managed by DB
   num_generations: 5 # Reduced for quick testing initially
-  num_children_per_parent: 2
+  num_children_per_parent: 10
   top_k_parents_pool: 10 # Select parents from the top K unique programs in DB
   num_parents_to_select: 3 # How many parents to pick from that pool
 
 database:
   type: "sqlite" # "in_memory" or "sqlite"
   path: "db/program_database.db" # Path for SQLite DB
+  prompt_database:
+    path: "db/prompt_database.db" # Path for SQLite DB for prompts
+  evaluator_database:
+    path: "db/evaluator_database.db" # Path for SQLite DB for evaluators
 
 logging:
   level: "VERBOSE" # DEBUG, VERBOSE, INFO, WARNING, ERROR

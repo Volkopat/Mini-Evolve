@@ -13,7 +13,7 @@ from .logger_setup import get_logger, VERBOSE_LEVEL_NUM
 
 
 def extract_delegation_requests(llm_output: str) -> List[Dict[str, str]]:
-    logger = get_logger("LLMToolsParser") # Use a distinct logger name
+    logger = get_logger("LLMTools.Parser") # Use a distinct logger name
     requests = []
     try:
         matches = re.finditer(r"<delegate_subtask>(.*?)</delegate_subtask>", llm_output, re.DOTALL)
@@ -37,18 +37,19 @@ def extract_delegation_requests(llm_output: str) -> List[Dict[str, str]]:
         logger.error("Error parsing delegation requests: %s. LLM output (first 200 chars): '%s'" % (e, llm_output[:200]))
     return requests
 
-async def generate_delegated_task_code(
-    sub_task_request: Dict[str, str], 
+async def generate_delegated_task_content( # Renamed function
+    sub_task_request: Dict[str, str],
     client: httpx.AsyncClient,
+    current_prompt_string: str, # Keep this for program_llm calls
     # Dependencies passed as arguments to avoid circular imports
     prompt_templates_ref: Dict[str, Optional[Template]],
     problem_config_ref: Dict[str, Any],
-    prompt_parts_ref: Dict[str, Any],
+    prompt_parts_ref: Dict[str, Any],  # Renamed for clarity
     llm_config_ref: Dict[str, Any],
     get_llm_completion_func: Callable[..., Tuple[Optional[str], str]],
-    extract_python_code_func: Callable[[str], Optional[str]]
+    extract_content_func: Callable[[str], Optional[str]] # Renamed parameter
 ) -> Tuple[Optional[str], str]:
-    logger = get_logger("LLMToolsSubTask") # Use a distinct logger name
+    logger = get_logger("LLMTools.SubTask")
 
     sub_task_prompt_template = prompt_templates_ref.get("delegated_subtask")
     if not sub_task_prompt_template:
@@ -57,9 +58,10 @@ async def generate_delegated_task_code(
 
     template_render_context = {
         "sub_task": sub_task_request,
-        "problem": problem_config_ref, # Use passed problem_config_ref
-        "prompt_ctx": prompt_parts_ref,  # Use passed prompt_parts_ref
-        "llm": llm_config_ref           # Use passed llm_config_ref
+        "problem": problem_config_ref,
+        "prompt_ctx": prompt_parts_ref,
+        "llm": llm_config_ref,
+        "current_prompt_string": current_prompt_string # Pass the current prompt string
     }
     try:
         prompt_text = sub_task_prompt_template.render(template_render_context)
@@ -71,19 +73,18 @@ async def generate_delegated_task_code(
     if not llm_response_content:
         return None, actual_prompt_used
 
-    generated_code = extract_python_code_func(llm_response_content) 
-    if not generated_code:
-        logger.warning("Failed to extract code for sub-task ID %s. Response: %s" % (sub_task_request.get("sub_task_id"), llm_response_content[:200]))
+    generated_content = extract_content_func(llm_response_content) # Use generic extract_content_func
+    if not generated_content:
+        logger.warning("Failed to extract content for sub-task ID %s. Response: %s" % (sub_task_request.get("sub_task_id"), llm_response_content[:200]))
         return None, actual_prompt_used
 
-    logger.log(VERBOSE_LEVEL_NUM, "Delegated Sub-task (ID: %s) - Generated Code:\\nPrompt (first 300 chars):\\n%s...\\nSub-task Code:\\n%s", 
-               sub_task_request.get("sub_task_id", "N/A"), actual_prompt_used[:300], generated_code)
+    logger.log(VERBOSE_LEVEL_NUM, "Delegated Sub-task (ID: %s) - Generated Content:\nPrompt (first 300 chars):\n%s...\nSub-task Content:\n%s",
+               sub_task_request.get("sub_task_id", "N/A"), actual_prompt_used[:300], generated_content)
 
-    sub_task_func_name = sub_task_request.get("expected_signature", "def FAKE(").split("(")[0].split("def ")[-1].strip()
-    if not ("def %s(" % sub_task_func_name in generated_code):
-        logger.warning("Sub-task %s generated code does not seem to define expected function %s." % (sub_task_request.get("sub_task_id"), sub_task_func_name))
-
-    return generated_code, actual_prompt_used
+    # Remove Python-specific function name check, as this function is now generic
+    # The caller (e.g., program_llm or prompt_llm) should perform content-specific validation.
+    
+    return generated_content, actual_prompt_used
 
 # Placeholder for Lean execution function to be added later
 async def execute_lean_code(lean_code: str, client: httpx.AsyncClient, lean_api_url: str) -> Dict[str, Any]:

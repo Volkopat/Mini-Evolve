@@ -4,6 +4,8 @@ import traceback
 import os
 import importlib.util
 import sys
+import ast # For code analysis
+from collections import Counter # For counting function calls
 from types import ModuleType
 
 from .logger_setup import get_logger # Use the central logger
@@ -16,7 +18,7 @@ EVALUATOR_LOGIC_FILENAME = "evaluator_logic.py"
 # but can also be checked by problem-specific evaluator_logic if needed.
 GLOBAL_DISALLOWED_KEYWORDS = ["subprocess", "os."] # Minimal global set for security
 
-def evaluate(program_code_string: str, main_config: dict, problem_config: dict, current_problem_dir: str) -> dict:
+def evaluate(program_code_string: str, main_config: dict, problem_config: dict, current_problem_dir: str, evaluator_code_string: str = None) -> dict:
     logger = get_logger("Evaluator")
     start_time = time.perf_counter()
 
@@ -39,86 +41,138 @@ def evaluate(program_code_string: str, main_config: dict, problem_config: dict, 
     program_module = ModuleType(program_module_name)
     
     # Define a restricted environment for exec
-    # Allow common builtins, but not dangerous ones like open, eval, exec itself directly from candidate.
     restricted_globals = {
         "__builtins__": {
             "len": len, "range": range, "list": list, "dict": dict, "tuple": tuple,
             "int": int, "float": float, "str": str, "bool": bool, "None": None,
             "abs": abs, "round": round, "min": min, "max": max, "sum": sum,
             "zip": zip, "map": map, "filter": filter, "sorted": sorted,
-            "print": print, # Allow print for debugging by LLM, not used for formal evaluation
+            "print": print,
             "isinstance": isinstance, "hasattr": hasattr, "callable": callable,
-            # Math module functions can be added here if deemed safe and broadly useful
-            # For example: 'math': math (after import math)
-            # However, problem-specific modules should be handled by problem itself if allowed.
         },
-        # Can pass main_config and problem_config to the executed code if ever needed, but generally not recommended.
     }
 
     try:
         compiled_code = compile(program_code_string, f'<{program_module_name}>', 'exec')
-        # Populate the module's dictionary
         exec(compiled_code, program_module.__dict__)
-        # setattr(program_module, '__dict__', program_module_locals) # Not needed if exec populates __dict__ directly
 
     except SyntaxError as e:
         base_results['error_message'] = "SyntaxError: %s\n%s" % (e, traceback.format_exc(limit=1))
         base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
         return base_results
-    except Exception as e: # Catch other errors during exec like NameError, TypeError from top level
+    except Exception as e:
         base_results['error_message'] = "Error during program execution/setup: %s\n%s" % (e, traceback.format_exc(limit=1))
         base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
         return base_results
 
-    # 3. Dynamically load and call the problem-specific evaluator_logic
-    evaluator_logic_path = os.path.join(current_problem_dir, EVALUATOR_LOGIC_FILENAME)
-    if not os.path.exists(evaluator_logic_path):
-        base_results['error_message'] = "Evaluator logic file not found: %s" % evaluator_logic_path
-        base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
-        return base_results
-
-    try:
-        spec = importlib.util.spec_from_file_location("problem_evaluator_module", evaluator_logic_path)
-        if spec is None or spec.loader is None:
-            raise ImportError("Could not create module spec from %s" % evaluator_logic_path)
-        
-        problem_eval_module = importlib.util.module_from_spec(spec)
-        sys.modules["problem_evaluator_module"] = problem_eval_module # Add to sys.modules before exec
-        spec.loader.exec_module(problem_eval_module)
-        
-        if not hasattr(problem_eval_module, 'evaluate_program') or not callable(problem_eval_module.evaluate_program):
-            base_results['error_message'] = "'evaluate_program' function not found or not callable in %s" % evaluator_logic_path
+    # 3. Load and call the evaluator logic
+    problem_eval_module = None
+    if evaluator_code_string:
+        # Use the provided evaluator_code_string directly
+        evaluator_module_name = "dynamic_evaluator_module"
+        problem_eval_module = ModuleType(evaluator_module_name)
+        try:
+            compiled_evaluator_code = compile(evaluator_code_string, f'<{evaluator_module_name}>', 'exec')
+            exec(compiled_evaluator_code, problem_eval_module.__dict__)
+        except SyntaxError as e:
+            base_results['error_message'] = "Evaluator SyntaxError: %s\n%s" % (e, traceback.format_exc(limit=1))
             base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
-            # Clean up module from sys.modules if it was added
-            if "problem_evaluator_module" in sys.modules:
+            return base_results
+        except Exception as e:
+            base_results['error_message'] = "Error during evaluator execution/setup: %s\n%s" % (e, traceback.format_exc(limit=1))
+            base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
+            return base_results
+    else:
+        # Fallback to loading from file if no string is provided (for backward compatibility or initial seeds)
+        evaluator_logic_path = os.path.join(current_problem_dir, EVALUATOR_LOGIC_FILENAME)
+        if not os.path.exists(evaluator_logic_path):
+            base_results['error_message'] = "Evaluator logic file not found: %s" % evaluator_logic_path
+            base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
+            return base_results
+        try:
+            spec = importlib.util.spec_from_file_location("problem_evaluator_module", evaluator_logic_path)
+            if spec is None or spec.loader is None:
+                raise ImportError("Could not create module spec from %s" % evaluator_logic_path)
+            
+            problem_eval_module = importlib.util.module_from_spec(spec)
+            sys.modules["problem_evaluator_module"] = problem_eval_module
+            spec.loader.exec_module(problem_eval_module)
+        except ImportError as e:
+            logger.error("ImportError loading problem-specific evaluator: %s" % e)
+            base_results['error_message'] = "ImportError for %s: %s" % (evaluator_logic_path, e)
+            base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
+            return base_results
+        except Exception as e:
+            logger.error("Exception during dynamic loading of evaluator from file '%s': %s\n%s" % (evaluator_logic_path, e, traceback.format_exc(limit=2)))
+            base_results['error_message'] = "Error loading evaluator from file %s: %s" % (evaluator_logic_path, e)
+            base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
+            return base_results
+
+    if problem_eval_module:
+        if not hasattr(problem_eval_module, 'evaluate_program') or not callable(problem_eval_module.evaluate_program):
+            base_results['error_message'] = "'evaluate_program' function not found or not callable in evaluator logic."
+            base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
+            if "problem_evaluator_module" in sys.modules: # Clean up if loaded from file
                 del sys.modules["problem_evaluator_module"]
             return base_results
 
-        # Call the problem-specific evaluation function
-        # It receives the prepared program_module, and the configs
-        specific_eval_results = problem_eval_module.evaluate_program(program_module, problem_config, main_config)
-        
-        # Clean up module from sys.modules to allow fresh loads if called again with different problem
-        if "problem_evaluator_module" in sys.modules:
-            del sys.modules["problem_evaluator_module"]
+        try:
+            specific_eval_results = problem_eval_module.evaluate_program(program_module, problem_config, main_config)
+            if "problem_evaluator_module" in sys.modules: # Clean up if loaded from file
+                del sys.modules["problem_evaluator_module"]
+        except Exception as e:
+            logger.error("Exception in problem-specific evaluator: %s\n%s" % (e, traceback.format_exc(limit=2)))
+            base_results['error_message'] = "Error in problem-specific evaluator: %s" % e
+            base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
+            if "problem_evaluator_module" in sys.modules: # Clean up if loaded from file
+                del sys.modules["problem_evaluator_module"]
+            code_analysis_results = _analyze_python_code(program_code_string)
+            base_results.update(code_analysis_results)
+            return base_results
 
         # Merge base results (like total execution time) with specific results
-        # Specific results should contain 'score', 'is_valid', 'error_message', and any other problem-specific metrics.
-        final_results = base_results.copy() # Start with a copy of base (which has exec time template)
-        final_results.update(specific_eval_results) # Override/add fields from specific evaluator
-        final_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000 # Recalculate total time
-        return final_results
+        final_results = base_results.copy()
+        final_results.update(specific_eval_results)
+        final_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
         
-    except ImportError as e:
-        logger.error("ImportError loading problem-specific evaluator: %s" % e)
-        base_results['error_message'] = "ImportError for %s: %s" % (evaluator_logic_path, e)
-    except Exception as e:
-        logger.error("Exception in problem-specific evaluator '%s': %s\n%s" % (evaluator_logic_path, e, traceback.format_exc(limit=2)))
-        base_results['error_message'] = "Error in problem-specific evaluator %s: %s" % (evaluator_logic_path, e)
+        # Add behavioral descriptors
+        code_analysis_results = _analyze_python_code(program_code_string)
+        final_results.update(code_analysis_results)
+        return final_results
+    else:
+        # Fallback if errors occurred during dynamic loading or execution of problem-specific eval
+        base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
+        
+        # Even if problem-specific eval fails, try to get basic code analysis
+        code_analysis_results = _analyze_python_code(program_code_string)
+        base_results.update(code_analysis_results)
+        return base_results
+
+def _analyze_python_code(code_string: str) -> dict:
+    """
+    Analyzes Python code to extract behavioral descriptors.
+    - code_length: Number of lines of code.
+    - num_function_calls: Number of function calls made in the code.
+    """
+    code_length = len(code_string.splitlines())
+    num_function_calls = 0
     
-    # Fallback if errors occurred during dynamic loading or execution of problem-specific eval
-    base_results['execution_time_ms'] = (time.perf_counter() - start_time) * 1000
-    return base_results
+    try:
+        tree = ast.parse(code_string)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                num_function_calls += 1
+    except SyntaxError:
+        # If code is syntactically incorrect, we can't parse it.
+        # Return default values for descriptors.
+        pass
+    except Exception as e:
+        get_logger("Evaluator.CodeAnalysis").warning(f"Error during code analysis: {e}")
+
+    return {
+        'code_length': code_length,
+        'num_function_calls': num_function_calls
+    }
 
 def print_eval_results(results: dict):
     logger = get_logger("EvaluatorPrint") # Use logger for output
@@ -243,4 +297,4 @@ def solve(matrix_a, matrix_b):
         main_logger.warning("Skipping missing evaluator_logic.py test as file was already not present (or .bak exists).")
 
 
-    main_logger.info("==== Evaluator Standalone Test Finished ====") 
+    main_logger.info("==== Evaluator Standalone Test Finished ====")

@@ -4,6 +4,8 @@ Inspired by Google DeepMind's AlphaEvolve: [AlphaEvolve: A Gemini-powered coding
 Mini-Evolve is a Python-based prototype of an evolutionary coding agent. It leverages Large Language Models (LLMs) to iteratively generate, evaluate, and improve code for well-defined problems. The system is designed to be modular, allowing for easy extension with new problems and configurations.
 
 ## Key Features
+- **Triple Co-evolution**: Mini-Evolve implements a novel triple co-evolutionary algorithm where Programs, Prompts, and Evaluators evolve in parallel, each driven by dedicated LLMs.
+- **MAP-Elites Integration**: Utilizes the MAP-Elites algorithm across all three evolutionary tracks (Programs, Prompts, and Evaluators) to maintain diversity and promote exploration of the behavioral space, ensuring robust and varied solutions.
 - **Evolutionary Algorithm**: Implements a core loop of selection, mutation (via LLM), and evaluation.
 - **LLM-Powered Code Generation**: Uses an LLM (configurable, e.g., Ollama with various models, OpenRouter) to propose code modifications and new solutions.
 - **Self-Correction**: The LLM can attempt to fix syntax or runtime errors in its own generated code based on evaluation feedback.
@@ -12,6 +14,8 @@ Mini-Evolve is a Python-based prototype of an evolutionary coding agent. It leve
 - **Modular Problem Definitions**: Problems are self-contained units, each with its own configuration, seed program, evaluation logic, and prompt context.
 - **Automated Evaluation**: Each problem defines its own `evaluator_logic.py` to score generated programs based on specific criteria.
 - **Program Database**: Stores all generated programs, their scores, validity, lineage (parent-child relationships), and other metadata in an SQLite database.
+- **Prompt Database**: Stores generated prompts and their performance metrics, enabling prompt evolution.
+- **Evaluator Database**: Stores generated evaluators and their challenge scores, facilitating the evolution of more robust evaluation criteria.
 - **Asynchronous Operations**: Utilizes `asyncio` for concurrent LLM API calls, significantly speeding up the generation phase.
 - **Configuration Management**: Uses YAML files for main system settings (`config/config.yaml`) and problem-specific parameters (`problems/<problem_name>/problem_config.yaml`).
 - **Logging**: Comprehensive logging to console and file (`log/evolution.log`) with multiple levels (DEBUG, VERBOSE, INFO, WARNING, ERROR).
@@ -22,7 +26,7 @@ Mini-Evolve is a Python-based prototype of an evolutionary coding agent. It leve
 Mini-Evolve/
 ├── app/                  # Core application logic (evolution loop, LLM generator, evaluator, DB, selection, llm_tools)
 ├── config/               # Configuration files (main config.yaml)
-├── db/                   # SQLite database (program_database.db)
+├── db/                   # SQLite databases (program_database.db, prompt_database.db, evaluator_database.db)
 ├── docs/                 # Project documentation (implementation details, commands)
 ├── examples/             # Standalone example scripts
 ├── log/                  # Log files (evolution.log)
@@ -62,7 +66,12 @@ Mini-Evolve/
         - Specify the `llm.model_name` you wish to use (e.g., "mistral", "llama3" for Ollama; "google/gemini-2.5-pro-preview" for OpenRouter).
     - **Problem Selection**:
         - Set `current_problem_directory` to point to the desired problem in the `problems/` directory (e.g., `problems/matrix_multiplication_direct`).
-    - Review other settings like database path, logging preferences, evolutionary parameters, and new features:
+    - Review other settings like database paths, logging preferences, evolutionary parameters, and new features:
+        - `database.path`: Path for the main program database.
+        - `database.prompt_database.path`: Path for the prompt database.
+        - `database.evaluator_database.path`: Path for the evaluator database.
+        - `map_elites.enable`: Enable/disable MAP-Elites.
+        - `map_elites.grid_resolution`: Define the resolution of the MAP-Elites grid.
         - `llm.enable_self_correction` (boolean)
         - `llm.max_correction_attempts` (integer)
         - `llm.enable_hierarchical_generation` (boolean)
@@ -82,9 +91,9 @@ To start the evolutionary process for the problem specified in `config/config.ya
 python3 -m app.evolution_loop
 ```
 This will:
-1. Remove and re-initialize the program database at the start of the run.
-2. Load the seed program for the selected problem.
-3. Run the evolutionary loop for the configured number of generations, generating, evaluating, and selecting programs.
+1. Remove and re-initialize all three databases (program, prompt, and evaluator) at the start of the run.
+2. Load the seed program, seed prompt, and seed evaluator for the selected problem.
+3. Run the triple co-evolutionary loop for the configured number of generations, generating, evaluating, and selecting programs, prompts, and evaluators in parallel.
 4. Log progress to the console and `log/evolution.log`.
 
 ### Utility Tools
@@ -99,10 +108,9 @@ This script offers various options to query and display programs from the databa
 #### Generate Report
 After an evolutionary run, you can generate a Markdown report:
 ```bash
-python3 -m tools.generate_report --db_path db/program_database.db
+python3 -m tools.generate_report
 ```
-(Adjust `--db_path` if your database is located elsewhere).
-The report will be saved in the `reports/` directory, named with the problem and timestamp (e.g., `report_matrix_multiplication_direct_YYYYMMDD_HHMMSS.md`).
+The report will be saved in the `reports/` directory, named with the problem and timestamp (e.g., `report_chromatic_number_plane_YYYYMMDD_HHMMSS.md`).
 
 ## Available Problems
 The system is designed to be modular. Problems are located in the `problems/` directory. Each problem sub-directory contains:

@@ -5,6 +5,7 @@ import time
 import json # For storing dicts like evaluation_metrics
 import uuid
 import os # Added for deleting DB file in test
+from .logger_setup import get_logger # Import logger
 
 # --- Configuration (could also be moved to main config.yaml if preferred) ---
 # Load from main config.yaml instead
@@ -15,15 +16,26 @@ def load_db_config():
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = yaml.safe_load(f)
-            return config.get('database', {})
+            return config
     except FileNotFoundError:
-        print(f"Warning: Main configuration file {CONFIG_FILE} not found. Using default DB path.")
+        print(f"Warning: Main configuration file {CONFIG_FILE} not found. Using default DB path and no MAP-Elites config.")
         return {}
     except yaml.YAMLError as e:
-        print(f"Warning: Error parsing YAML configuration: {e}. Using default DB path.")
+        print(f"Warning: Error parsing YAML configuration: {e}. Using default DB path and no MAP-Elites config.")
         return {}
 
-db_config = load_db_config()
+_map_elites_config_internal = {} # Internal mutable variable
+
+def set_map_elites_config(config: dict):
+    """Sets the MAP-Elites configuration from the main config."""
+    global _map_elites_config_internal
+    _map_elites_config_internal = config
+
+# Initial load (might be overridden later by set_map_elites_config)
+full_config_initial = load_db_config()
+db_config = full_config_initial.get('database', {})
+set_map_elites_config(full_config_initial.get('map_elites', {})) # Set initial config
+
 DATABASE_PATH = db_config.get('path', 'program_database.db')
 
 # --- Code Normalization ---
@@ -59,9 +71,21 @@ def init_db(db_path=DATABASE_PATH):
         is_valid BOOLEAN,
         generation_discovered INTEGER,
         parent_id TEXT, -- Can be NULL for seed programs
+        prompt_id TEXT, -- Foreign key to prompts table
         llm_prompt TEXT, -- The full prompt sent to the LLM
         evaluation_results_json TEXT, -- Store the full dict from evaluator.py
+        descriptor_1 REAL, -- Behavioral descriptor 1 (e.g., code length)
+        descriptor_2 REAL, -- Behavioral descriptor 2 (e.g., num function calls)
         timestamp_added REAL NOT NULL
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS map_elites_grid (
+        descriptor_1_bin INTEGER NOT NULL,
+        descriptor_2_bin INTEGER NOT NULL,
+        program_id TEXT NOT NULL,
+        PRIMARY KEY (descriptor_1_bin, descriptor_2_bin),
+        FOREIGN KEY (program_id) REFERENCES programs (program_id) ON DELETE CASCADE
     )
     """)
     # Add index for faster lookups on normalized_code_hash
@@ -77,8 +101,11 @@ def add_program(code_string: str,
                 is_valid: bool,
                 generation_discovered: int | None,
                 parent_id: str | None,
+                prompt_id: str | None, # New: The ID of the prompt used to generate this program
                 llm_prompt: str | None, # The prompt used to generate this program
                 evaluation_results: dict, # Full results from evaluator.py
+                descriptor_1: float | None = None, # New: Behavioral descriptor 1
+                descriptor_2: float | None = None, # New: Behavioral descriptor 2
                 db_path=DATABASE_PATH) -> str | None:
     """Adds a new program to the database if its normalized form doesn't already exist.
     Returns the program_id if added, None otherwise (e.g., if duplicate or error).
@@ -101,14 +128,14 @@ def add_program(code_string: str,
     try:
         cursor.execute("""
         INSERT INTO programs (
-            program_id, code_string, normalized_code_string, normalized_code_hash, 
-            score, is_valid, generation_discovered, parent_id, llm_prompt, 
-            evaluation_results_json, timestamp_added
+            program_id, code_string, normalized_code_string, normalized_code_hash,
+            score, is_valid, generation_discovered, parent_id, prompt_id, llm_prompt,
+            evaluation_results_json, descriptor_1, descriptor_2, timestamp_added
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (program_id, original_code_string, normalized_code, normalized_hash, 
-              score, is_valid, generation_discovered, parent_id, llm_prompt,
-              evaluation_results_str, timestamp))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (program_id, original_code_string, normalized_code, normalized_hash,
+              score, is_valid, generation_discovered, parent_id, prompt_id, llm_prompt,
+              evaluation_results_str, descriptor_1, descriptor_2, timestamp))
         conn.commit()
         # print(f"Added program {program_id} with hash {normalized_hash}")
         return program_id
@@ -153,6 +180,95 @@ def get_program(program_id: str, db_path=DATABASE_PATH) -> dict | None:
             program_data['evaluation_results'] = {} # Fallback to empty dict
         return program_data
     return None
+
+def _get_bin_coordinates(descriptor_values: list[float], grid_resolution: list[int]) -> tuple[int, ...]:
+    """
+    Converts continuous descriptor values into discrete bin coordinates.
+    Uses heuristic binning for generic descriptors.
+    """
+    bins = []
+    # Heuristic binning for generic descriptors
+    # These divisors are chosen based on typical code length and function call counts.
+    # They might need adjustment based on the specific problem's code characteristics.
+    divisors = [50, 5] # Example: 50 for code_length, 5 for num_function_calls
+
+    for i, value in enumerate(descriptor_values):
+        if i < len(grid_resolution) and i < len(divisors):
+            bin_coord = int(value / divisors[i])
+            bin_coord = max(0, min(bin_coord, grid_resolution[i] - 1))
+            bins.append(bin_coord)
+        else:
+            bins.append(0) # Default bin for extra descriptors or if divisor not defined
+    return tuple(bins)
+
+def add_program_to_map_elites(program_id: str, score: float, descriptor_values: list[float], db_path=DATABASE_PATH) -> bool:
+    """
+    Adds or updates a program in the MAP-Elites grid.
+    Returns True if the program became an elite, False otherwise.
+    """
+    logger = get_logger("ProgramDB.MAPElites")
+    logger.debug(f"Attempting to add program {program_id} to MAP-Elites grid.")
+
+    map_elites_config = get_map_elites_config() # Get the current config
+
+    if not map_elites_config.get('enable', False):
+        logger.debug("MAP-Elites not enabled in config.")
+        return False # MAP-Elites not enabled
+
+    grid_resolution = map_elites_config.get('grid_resolution')
+    if not grid_resolution or len(descriptor_values) != len(grid_resolution):
+        logger.warning(f"MAP-Elites grid_resolution not configured correctly ({grid_resolution}) or mismatch with descriptor values ({descriptor_values}).")
+        return False
+
+    bin_coords = _get_bin_coordinates(descriptor_values, grid_resolution)
+    logger.debug(f"Program {program_id} with descriptors {descriptor_values} mapped to bin {bin_coords}.")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    try:
+        # Check if an elite already exists for this bin
+        cursor.execute(f"""
+            SELECT T1.program_id, T1.score
+            FROM programs AS T1
+            JOIN map_elites_grid AS T2 ON T1.program_id = T2.program_id
+            WHERE T2.descriptor_1_bin = ? AND T2.descriptor_2_bin = ?
+        """, bin_coords)
+        
+        existing_elite = cursor.fetchone()
+
+        if existing_elite:
+            existing_elite_id, existing_elite_score = existing_elite
+            logger.debug(f"Existing elite found for bin {bin_coords}: {existing_elite_id} (score: {existing_elite_score}). New program score: {score}.")
+            if score > existing_elite_score:
+                # New program is better, update the elite
+                cursor.execute(f"""
+                    UPDATE map_elites_grid
+                    SET program_id = ?
+                    WHERE descriptor_1_bin = ? AND descriptor_2_bin = ?
+                """, (program_id, *bin_coords))
+                conn.commit()
+                logger.info(f"Updated elite for bin {bin_coords}: Program {program_id} (score: {score}) replaced {existing_elite_id} (score: {existing_elite_score})")
+                return True
+            else:
+                # Existing elite is better or equal
+                logger.debug(f"Existing elite {existing_elite_id} (score: {existing_elite_score}) is better or equal. New program not added as elite.")
+                return False
+        else:
+            # No elite exists for this bin, insert the new program as the elite
+            cursor.execute(f"""
+                INSERT INTO map_elites_grid (descriptor_1_bin, descriptor_2_bin, program_id)
+                VALUES (?, ?, ?)
+            """, (*bin_coords, program_id))
+            conn.commit()
+            logger.info(f"New elite for bin {bin_coords}: Program {program_id} (score: {score})")
+            return True
+    except sqlite3.Error as e:
+        logger.error(f"Error adding program to MAP-Elites grid: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
 
 # --- Additional Query Functions for Selection ---
 
@@ -243,6 +359,10 @@ def get_unique_programs_from_top_k(k_to_select: int, top_n_to_consider: int, db_
 def get_database_path() -> str:
     return DATABASE_PATH
 
+def get_map_elites_config() -> dict:
+    """Returns the current MAP-Elites configuration."""
+    return _map_elites_config_internal
+
 # --- Main for Testing ---
 if __name__ == "__main__":
     # Ensure a clean slate for testing by removing the old DB if it exists
@@ -285,22 +405,22 @@ if __name__ == "__main__":
 
     print("\n--- Testing add_program and check_if_exists ---")
     # Add first program
-    prog1_id = add_program(test_code_1, eval_res_1['score'], eval_res_1['is_valid'], 0, None, "prompt1", eval_res_1)
+    prog1_id = add_program(test_code_1, eval_res_1['score'], eval_res_1['is_valid'], 0, None, "test_prompt_id_1", "prompt1", eval_res_1)
     print(f"Added program 1: ID = {prog1_id}")
     assert prog1_id is not None
-
+ 
     # Try adding same program with different formatting (should be detected as duplicate)
-    prog1_dup_id = add_program(test_code_1_slightly_different_formatting, eval_res_1['score'], eval_res_1['is_valid'], 0, None, "prompt1_dup", eval_res_1)
+    prog1_dup_id = add_program(test_code_1_slightly_different_formatting, eval_res_1['score'], eval_res_1['is_valid'], 0, None, "test_prompt_id_1", "prompt1_dup", eval_res_1)
     print(f"Attempted to add duplicate of program 1 (diff format): ID = {prog1_dup_id}")
     assert prog1_dup_id is None # Should be None because it's a duplicate by normalized hash
-
+ 
     # Add second, different program
-    prog2_id = add_program(test_code_2, eval_res_2['score'], eval_res_2['is_valid'], 0, prog1_id, "prompt2", eval_res_2)
+    prog2_id = add_program(test_code_2, eval_res_2['score'], eval_res_2['is_valid'], 0, prog1_id, "test_prompt_id_2", "prompt2", eval_res_2)
     print(f"Added program 2: ID = {prog2_id}")
     assert prog2_id is not None
-
+ 
     # Add broken program
-    prog_broken_id = add_program(broken_code, eval_res_broken['score'], eval_res_broken['is_valid'], 1, None, "prompt_broken", eval_res_broken)
+    prog_broken_id = add_program(broken_code, eval_res_broken['score'], eval_res_broken['is_valid'], 1, None, "test_prompt_id_3", "prompt_broken", eval_res_broken)
     print(f"Added broken program: ID = {prog_broken_id}")
     assert prog_broken_id is not None # Should add fine, just has low score/is_invalid
     
@@ -310,36 +430,37 @@ if __name__ == "__main__":
     norm_hash_non_existent = get_code_hash(normalize_code("def non_existent(): pass"))
     assert check_if_exists(norm_hash_non_existent) is False
     print("check_if_exists tests passed.")
-
+ 
     print("\n--- Testing get_program ---")
     if prog1_id:
         retrieved_prog1 = get_program(prog1_id)
-        print(f"Retrieved program 1: {retrieved_prog1['program_id']}, Score: {retrieved_prog1['score']}")
+        print(f"Retrieved program 1: {retrieved_prog1['program_id']}, Score: {retrieved_prog1['score']}, Prompt ID: {retrieved_prog1['prompt_id']}")
         assert retrieved_prog1 is not None
         assert retrieved_prog1['code_string'] == test_code_1
         assert retrieved_prog1['evaluation_results']['score'] == eval_res_1['score']
-
+        assert retrieved_prog1['prompt_id'] == "test_prompt_id_1"
+ 
     if prog_broken_id:
         retrieved_broken = get_program(prog_broken_id)
         print(f"Retrieved broken program: {retrieved_broken['program_id']}, Valid: {retrieved_broken['is_valid']}")
         assert retrieved_broken['is_valid'] is False
         assert retrieved_broken['evaluation_results']['error_message'] == 'SyntaxError'
-
+ 
     print("\n--- Testing get_best_n_programs and get_unique_programs_from_top_k ---")
-
+ 
     # Re-add some programs for these tests, ensuring some variety in scores and some duplicates
     # To make tests deterministic, we'll clear and re-init for this section too.
     if os.path.exists(DATABASE_PATH):
         os.remove(DATABASE_PATH)
     init_db()
-
-    prog_A_s08_vT_id = add_program("def solveA(): return 8", 0.8, True, 1, None, "pA", {"detail": "A"})
-    prog_B_s09_vT_id = add_program("def solveB(): return 9", 0.9, True, 1, None, "pB", {"detail": "B"})
-    prog_C_s07_vT_id = add_program("def solveC(): return 7", 0.7, True, 1, None, "pC", {"detail": "C"})
-    prog_D_s09_vT_id_dupB = add_program("def solveB(): return 9 # slightly different", 0.9, True, 1, None, "pB_dup", {"detail": "B_dup"}) # Duplicate normalized
-    prog_E_s06_vT_id = add_program("def solveE(): return 6", 0.6, True, 2, None, "pE", {"detail": "E"})
-    prog_F_s08_vT_id_dupA = add_program("def solveA(): return 8 # different again", 0.8, True, 2, None, "pA_dup", {"detail": "A_dup"}) # Duplicate normalized
-    prog_G_s05_vF_id = add_program("def solveG(): error", 0.05, False, 2, None, "pG", {"detail": "G_invalid"}) # Invalid
+ 
+    prog_A_s08_vT_id = add_program("def solveA(): return 8", 0.8, True, 1, None, "prompt_A_id", "pA", {"detail": "A"})
+    prog_B_s09_vT_id = add_program("def solveB(): return 9", 0.9, True, 1, None, "prompt_B_id", "pB", {"detail": "B"})
+    prog_C_s07_vT_id = add_program("def solveC(): return 7", 0.7, True, 1, None, "prompt_C_id", "pC", {"detail": "C"})
+    prog_D_s09_vT_id_dupB = add_program("def solveB(): return 9 # slightly different", 0.9, True, 1, None, "prompt_B_id", "pB_dup", {"detail": "B_dup"}) # Duplicate normalized
+    prog_E_s06_vT_id = add_program("def solveE(): return 6", 0.6, True, 2, None, "prompt_E_id", "pE", {"detail": "E"})
+    prog_F_s08_vT_id_dupA = add_program("def solveA(): return 8 # different again", 0.8, True, 2, None, "prompt_A_id", "pA_dup", {"detail": "A_dup"}) # Duplicate normalized
+    prog_G_s05_vF_id = add_program("def solveG(): error", 0.05, False, 2, None, "prompt_G_id", "pG", {"detail": "G_invalid"}) # Invalid
 
     assert prog_D_s09_vT_id_dupB is None # Check that duplicate was not added
     assert prog_F_s08_vT_id_dupA is None

@@ -1,0 +1,59 @@
+You are an expert in designing challenging and effective evaluation logic for Python programs.
+Your primary task is to generate the Python code for the `evaluate_program` function, which will be used to assess the performance of candidate programs.
+
+Problem Description:
+{{ problem.problem_description }}
+
+Function to be Evaluated: `{{ problem.function_details.name }}`
+Signature: `{{ problem.function_details.name }}({{ problem.function_details.input_params_string }})`
+
+Constraints for the Python Code being Evaluated:
+{{ problem.constraints_text }}
+
+Your `evaluate_program` function must have the following signature:
+`def evaluate_program(program_module, problem_config, main_config) -> dict:`
+It should return a dictionary with at least:
+- `'score'`: A float representing the program's performance (higher is better).
+- `'is_valid'`: A boolean indicating if the program is syntactically correct and runnable.
+- `'error_message'`: An optional string for any errors encountered during problem-specific evaluation.
+
+You should aim to create evaluation logic that is increasingly challenging, especially for programs that previously scored well. Consider:
+- Adding more complex test cases.
+- Introducing edge cases.
+- Checking for efficiency or specific algorithmic properties.
+- Adjusting scoring mechanisms to differentiate between good and excellent solutions.
+
+{% if parent_evaluator_code and previous_error_feedback %}
+Important Feedback: The previous evaluator code (shown below) resulted in the following error during its own testing:
+"{{ previous_error_feedback }}"
+Please analyze this error and refine the parent evaluator code to fix this issue and produce a correct and robust evaluator.
+
+Parent Evaluator Code (to refine):
+```python
+{{ parent_evaluator_code }}
+```
+{% elif parent_evaluator_code %}
+Parent Evaluator Code (to refine):
+```python
+{{ parent_evaluator_code }}
+```
+{% endif %}
+
+{% if best_programs_from_generator %}
+Here are some of the best-performing programs from the Generator (your adversaries). Your goal is to create evaluation logic that can effectively challenge these, or similar, programs.
+{% for program in best_programs_from_generator %}
+---
+Program ID: {{ program.program_id }}
+Score: {{ program.score }}
+Code:
+```python
+{{ program.code_string }}
+```
+---
+{% endfor %}
+{% endif %}
+
+Your output should be ONLY the Python code for the `evaluate_program` function, enclosed in a ```python...``` block.
+Do NOT include any explanations or conversational text outside this block.
+
+Assistant:

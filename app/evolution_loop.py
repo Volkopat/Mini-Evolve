@@ -6,11 +6,16 @@ import asyncio # Added for async
 import httpx # Added for async
 
 from . import program_db
-from . import llm_generator # This now loads all configs (main, problem, prompt_parts)
+from . import prompt_db # New: For prompt evolution
+from . import evaluator_db # New: For evaluator evolution
+from . import program_llm # Renamed from llm_generator
+from . import prompt_llm # New: For prompt generation
+from . import evaluator_llm # New: For evaluator generation
 from . import evaluator
 from . import selection
 from . import logger_setup # This will configure logging upon import
 from .logger_setup import VERBOSE_LEVEL_NUM # Import the VERBOSE level
+from .evolution_phases import run_prompt_evolution_phase, run_program_evolution_phase, run_evaluator_evolution_phase # New
 
 # --- Configuration Loading ---
 CONFIG_FILE = "config/config.yaml"
@@ -60,25 +65,29 @@ async def run_evolution():
     main_logger = logger_setup.get_logger("EvolutionLoop")
     main_logger.info("==== Mini-Evolve Session Started (Async) ====")
 
-    # Configs are loaded by llm_generator module at import time.
-    # Access them via llm_generator.main_config, llm_generator.problem_config, llm_generator.prompt_parts
+    # Configs are loaded by program_llm, prompt_llm, and evaluator_llm modules at import time.
+    # Access them via their respective module's global variables.
     try:
-        if not llm_generator.main_config or not llm_generator.problem_config or not llm_generator.prompt_parts:
-            # This might happen if llm_generator.load_all_configs() failed critically
-            main_logger.critical("Configurations (main, problem, or prompt_parts) not loaded via llm_generator. Aborting.")
-            # Attempt to reload if possible, or re-raise the error from llm_generator
-            try:
-                llm_generator.load_all_configs() # explicit call for retry
-                main_logger.info("llm_generator.load_all_configs() re-attempted.")
-                if not llm_generator.main_config or not llm_generator.problem_config or not llm_generator.prompt_parts:
-                    main_logger.critical("Still unable to load all configs. Aborting.")
-                    return
-            except Exception as e:
-                main_logger.critical("Failed to reload configs via llm_generator: %s. Aborting." % e)
-                return
+        # Ensure all LLM modules have loaded their configs
+        if not program_llm.main_config or not program_llm.problem_config or not program_llm.program_context_parts:
+            main_logger.critical("Program LLM configurations not loaded. Aborting.")
+            return
+        if not prompt_llm.main_config or not prompt_llm.problem_config or not prompt_llm.prompt_context_parts:
+            main_logger.critical("Prompt LLM configurations not loaded. Aborting.")
+            return
+        if not evaluator_llm.main_config or not evaluator_llm.problem_config or not evaluator_llm.prompt_context_parts:
+            main_logger.critical("Evaluator LLM configurations not loaded. Aborting.")
+            return
         
-        main_cfg = llm_generator.main_config
-        problem_cfg = llm_generator.problem_config
+        main_cfg = program_llm.main_config # Use program_llm's main_config as the primary
+        problem_cfg = program_llm.problem_config # Use program_llm's problem_config as the primary
+        
+        # Set MAP-Elites config for all relevant DBs
+        map_elites_config = main_cfg.get('map_elites', {})
+        program_db.set_map_elites_config(map_elites_config)
+        prompt_db.set_map_elites_config(map_elites_config) # New
+        evaluator_db.set_map_elites_config(map_elites_config) # New
+
         current_problem_dir = main_cfg.get('current_problem_directory')
         if not current_problem_dir:
              main_logger.critical("current_problem_directory not found in main_config. Aborting.")
@@ -108,229 +117,204 @@ async def run_evolution():
     main_logger.info("Evolutionary Loop Config: Generations=%s, Children/Parent=%s, ParentPoolK=%s, NumParentsSelect=%s" % (
         num_generations, num_children_per_parent, top_k_parents_pool_size, num_parents_to_select))
 
-    # Initialize Database
-    db_path = program_db.get_database_path() # Gets path from program_db which loaded it from main_config
-    if os.path.exists(db_path):
-        try:
-            os.remove(db_path)
-            main_logger.info("Removed existing database: %s" % db_path)
-        except OSError as e:
-            main_logger.warning("Could not remove existing database %s: %s. Proceeding with existing DB." % (db_path, e))
-    program_db.init_db(db_path=db_path)
-    main_logger.info("Program database initialized at: %s" % db_path)
+    # Initialize Databases
+    program_db_path = program_db.get_database_path()
+    prompt_db_path = prompt_db.get_database_path() # New
+    evaluator_db_path = evaluator_db.get_database_path() # New
 
-    # Load, evaluate, and add seed program
-    seed_code_str = problem_cfg.get('seed_program_code')
-    if not seed_code_str or not seed_code_str.strip():
-        main_logger.critical("'seed_program_code' not found or is empty in problem_config.yaml for problem '%s'. Aborting." % problem_name)
+    # Clean existing databases for a fresh run
+    for path in [program_db_path, prompt_db_path, evaluator_db_path]:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                main_logger.info("Removed existing database: %s" % path)
+            except OSError as e:
+                main_logger.warning("Could not remove existing database %s: %s. Proceeding with existing DB." % (path, e))
+    
+    program_db.init_db(db_path=program_db_path)
+    prompt_db.init_db(db_path=prompt_db_path) # New
+    evaluator_db.init_db(db_path=evaluator_db_path) # New
+
+    main_logger.info("All databases initialized.")
+
+    # Load seed program, prompt, and evaluator strings from problem_config
+    seed_program_code_str = problem_cfg.get('seed_program_code')
+    if not seed_program_code_str or not seed_program_code_str.strip():
+        main_logger.critical("'seed_program_code' not found or is empty in problem_config.yaml. Aborting.")
         return
     
-    main_logger.info("Using seed program from problem_config.yaml for '%s':\n%s" % (seed_function_name, seed_code_str[:300]))
+    seed_prompt_string = problem_cfg.get('seed_prompt_string')
+    if not seed_prompt_string or not seed_prompt_string.strip():
+        main_logger.critical("'seed_prompt_string' not found or is empty in problem_config.yaml. Aborting.")
+        return
+ 
+    seed_evaluator_code_str = problem_cfg.get('seed_evaluator_code')
+    if not seed_evaluator_code_str or not seed_evaluator_code_str.strip():
+        main_logger.critical("'seed_evaluator_code' not found or is empty in problem_config.yaml. Aborting.")
+        return
 
-    # DEBUGGING: Check type and content of seed_code_str
-    main_logger.debug("Type of seed_code_str: %s" % type(seed_code_str))
-    main_logger.debug("Repr of seed_code_str (first 500 chars): %s" % repr(seed_code_str)[:500])
+    # 1. Add seed prompt to DB first
+    seed_prompt_length = len(seed_prompt_string.splitlines())
+    seed_prompt_keywords = len(re.findall(r'\b[A-Za-z_]+\b', seed_prompt_string)) # Simple heuristic
+    eval_results_seed_prompt = {"initial_evaluation": "N/A"} # Will be updated later by program performance
+ 
+    seed_prompt_id = prompt_db.add_prompt(
+        prompt_string=seed_prompt_string,
+        score=0.0, # Initial score, will be updated by program performance
+        generation_discovered=0,
+        parent_prompt_id=None,
+        llm_prompt="N/A (Seed Prompt)",
+        evaluation_results=eval_results_seed_prompt,
+        descriptor_1=seed_prompt_length,
+        descriptor_2=seed_prompt_keywords,
+        db_path=prompt_db_path
+    )
+    if seed_prompt_id:
+        main_logger.info("Seed prompt added to DB with ID: %s" % seed_prompt_id)
+        if prompt_db.get_map_elites_config().get('enable', False):
+            prompt_db.add_prompt_to_map_elites(
+                prompt_id=seed_prompt_id,
+                score=0.0, # Initial score
+                descriptor_values=[seed_prompt_length, seed_prompt_keywords],
+                db_path=prompt_db_path
+            )
+    else:
+        main_logger.warning("Seed prompt was NOT added to DB. Evolution may be impacted.")
+        # If seed prompt cannot be added, we might need to abort or use a dummy. For now, abort.
+        return # Abort evolution if seed prompt fails to add
 
-    # Evaluate seed using the refactored evaluator
-    eval_results_seed = evaluator.evaluate(seed_code_str, main_cfg, problem_cfg, current_problem_dir)
-    main_logger.info("Seed program evaluation: Score=%s, Valid=%s" % (eval_results_seed.get('score'), eval_results_seed.get('is_valid')))
-    if eval_results_seed.get('error_message'):
-        main_logger.warning("Seed eval error: %s" % eval_results_seed.get('error_message'))
+    # 2. Add seed evaluator to DB
+    eval_results_seed_evaluator = {"initial_evaluation": "N/A"} # Will be updated later by program performance
+    seed_evaluator_length = len(seed_evaluator_code_str.splitlines())
+    seed_evaluator_test_cases = seed_evaluator_code_str.count("test_case") # Heuristic
+ 
+    seed_evaluator_id = evaluator_db.add_evaluator(
+        evaluator_code_string=seed_evaluator_code_str,
+        challenge_score=0.0, # Initial score, will be updated by program performance
+        generation_discovered=0,
+        parent_evaluator_id=None,
+        llm_prompt="N/A (Seed Evaluator)",
+        evaluation_results=eval_results_seed_evaluator,
+        descriptor_1=seed_evaluator_length,
+        descriptor_2=seed_evaluator_test_cases,
+        db_path=evaluator_db_path
+    )
+    if seed_evaluator_id:
+        main_logger.info("Seed evaluator added to DB with ID: %s" % seed_evaluator_id)
+        if evaluator_db.get_map_elites_config().get('enable', False):
+            evaluator_db.add_evaluator_to_map_elites(
+                evaluator_id=seed_evaluator_id,
+                challenge_score=0.0, # Initial score
+                descriptor_values=[seed_evaluator_length, seed_evaluator_test_cases],
+                db_path=evaluator_db_path
+            )
+    else:
+        main_logger.warning("Seed evaluator was NOT added to DB. Evolution may be impacted.")
+        # If seed evaluator cannot be added, we might need to abort or use a dummy. For now, abort.
+        return # Abort evolution if seed evaluator fails to add
 
-    if not eval_results_seed.get('is_valid'):
-        main_logger.warning("Seed program is NOT valid. This may hinder evolution.")
+    # Initialize current_evaluator_data with the seed evaluator for the first generation
+    current_evaluator_data = {
+        "evaluator_code_string": seed_evaluator_code_str,
+        "evaluator_id": seed_evaluator_id,
+        "challenge_score": 0.0 # Initial score, will be updated by program performance
+    }
+
+    # 3. Evaluate seed program using the initial evaluator (now available)
+    eval_results_seed_program = evaluator.evaluate(seed_program_code_str, main_cfg, problem_cfg, current_problem_dir, seed_evaluator_code_str)
     
-    seed_id = program_db.add_program(
-        code_string=seed_code_str,
-        score=eval_results_seed.get('score'),
-        is_valid=eval_results_seed.get('is_valid'),
+    # 4. Add seed program to DB (now with seed_prompt_id available)
+    seed_program_id = program_db.add_program(
+        code_string=seed_program_code_str,
+        score=eval_results_seed_program.get('score'),
+        is_valid=eval_results_seed_program.get('is_valid'),
         generation_discovered=0,
         parent_id=None,
+        prompt_id=seed_prompt_id, # Pass the seed prompt ID
         llm_prompt="N/A (Seed Program)",
-        evaluation_results=eval_results_seed,
-        db_path=db_path
+        evaluation_results=eval_results_seed_program,
+        descriptor_1=eval_results_seed_program.get('code_length'),
+        descriptor_2=eval_results_seed_program.get('num_function_calls'),
+        db_path=program_db_path
     )
-    if seed_id:
-        main_logger.info("Seed program added to DB with ID: %s" % seed_id)
+    if seed_program_id:
+        main_logger.info("Seed program added to DB with ID: %s" % seed_program_id)
+        if program_db.get_map_elites_config().get('enable', False):
+            program_db.add_program_to_map_elites(
+                program_id=seed_program_id,
+                score=eval_results_seed_program.get('score'),
+                descriptor_values=[eval_results_seed_program.get('code_length'), eval_results_seed_program.get('num_function_calls')],
+                db_path=program_db_path
+            )
     else:
-        main_logger.warning("Seed program was NOT added to DB (might be a duplicate if DB was not cleared or if seed is invalid and not added by policy). Evolution may be impacted.")
+        main_logger.warning("Seed program was NOT added to DB. Evolution may be impacted.")
+        # If seed program cannot be added, we might need to abort or use a dummy. For now, abort.
+        return # Abort evolution if seed program fails to add
 
-    async with httpx.AsyncClient() as client: 
+    async with httpx.AsyncClient() as client:
         for gen in range(1, num_generations + 1):
-            main_logger.info("---- Generation %s/%s Starting ----" % (gen, num_generations))
-            main_logger.log(VERBOSE_LEVEL_NUM, "Database path for parent selection: %s", db_path)
+            main_logger.info("==== Generation %s/%s Starting ====" % (gen, num_generations))
 
-            selected_parents = selection.select_parents(
-                num_parents=num_parents_to_select, 
-                top_k_to_consider=top_k_parents_pool_size,
-                db_path=db_path
+            current_prompt_data = await run_prompt_evolution_phase(
+                gen=gen,
+                main_cfg=main_cfg,
+                problem_cfg=problem_cfg,
+                current_problem_dir=current_problem_dir,
+                seed_prompt_string=seed_prompt_string,
+                num_children_per_parent=num_children_per_parent,
+                num_parents_to_select=num_parents_to_select,
+                top_k_parents_pool_size=top_k_parents_pool_size,
+                prompt_db_path=prompt_db_path,
+                client=client
             )
 
-            if not selected_parents:
-                main_logger.warning("Generation %s: No parents selected. Population might be too small or all invalid. Skipping generation." % gen)
-                if gen == 1 and not seed_id: 
-                     main_logger.error("Generation 1: No seed and no parents. Aborting.")
-                     break
-                continue
+            current_evaluator_data = await run_evaluator_evolution_phase(
+                gen=gen,
+                main_cfg=main_cfg,
+                problem_cfg=problem_cfg,
+                current_problem_dir=current_problem_dir,
+                seed_evaluator_code_str=seed_evaluator_code_str,
+                num_children_per_parent=num_children_per_parent,
+                num_parents_to_select=num_parents_to_select,
+                top_k_parents_pool_size=top_k_parents_pool_size,
+                program_db_path=program_db_path,
+                evaluator_db_path=evaluator_db_path,
+                client=client
+            )
 
-            main_logger.info("Generation %s: Selected %s parents." % (gen, len(selected_parents)))
-            
-            child_generation_tasks = []
-            parent_info_for_tasks = [] 
+            program_evolution_result = await run_program_evolution_phase(
+                gen=gen,
+                main_cfg=main_cfg,
+                problem_cfg=problem_cfg,
+                current_problem_dir=current_problem_dir,
+                seed_program_id=seed_program_id,
+                seed_evaluator_code_str=seed_evaluator_code_str,
+                num_children_per_parent=num_children_per_parent,
+                num_parents_to_select=num_parents_to_select,
+                top_k_parents_pool_size=top_k_parents_pool_size,
+                program_db_path=program_db_path,
+                prompt_db_path=prompt_db_path, # New: Pass prompt_db_path
+                evaluator_db_path=evaluator_db_path,
+                current_prompt_data=current_prompt_data,
+                current_evaluator_data=current_evaluator_data, # Added missing argument
+                client=client
+            )
+            # Handle potential early exit from program evolution phase
+            if program_evolution_result is False: # Indicates an error or no parents found
+                main_logger.warning("Program evolution phase skipped or failed. Continuing to next generation if possible.")
+                continue # Skip to next generation
 
-            for i, parent_program_data in enumerate(selected_parents):
-                parent_code = parent_program_data['code_string']
-                parent_id = parent_program_data['program_id']
-                parent_score = parent_program_data['score']
-                parent_eval_results = parent_program_data.get('evaluation_results', {}) # Get parent's eval results
-                parent_previous_error = parent_eval_results.get('error_message') # Get potential error message
 
-                main_logger.log(VERBOSE_LEVEL_NUM, "Selected Parent %s/%s (ID: %s, Score: %.4f)\nParent Code:\n%s", 
-                                i+1, len(selected_parents), parent_id[:8] if parent_id else 'N/A', 
-                                parent_score, parent_code)
-
-                main_logger.debug("  Parent %s/%s (ID: %s, Score: %.4f) preparing children tasks..." % (i+1, len(selected_parents), parent_id[:8], parent_score))
-
-                for _ in range(num_children_per_parent): 
-                    dynamic_prompt_context = {
-                        'parent_code': parent_code,
-                        'previous_error_feedback': parent_previous_error # Pass it to the prompt context
-                    }
-                    task = llm_generator.generate_code_variant(
-                        context_from_evolution_loop=dynamic_prompt_context, 
-                        client=client,
-                        current_delegation_depth=0 # Start top-level calls at depth 0
-                    )
-                    child_generation_tasks.append(task)
-                    parent_info_for_tasks.append({'parent_id': parent_id})
-            
-            main_logger.info("Generation %s: Launching %s child generation tasks..." % (gen, len(child_generation_tasks)))
-            generated_children_results = await asyncio.gather(*child_generation_tasks)
-            main_logger.info("Generation %s: All %s child generation tasks completed." % (gen, len(generated_children_results)))
-
-            children_processed_count = 0
-            for idx, result_tuple in enumerate(generated_children_results):
-                child_code_string, prompt_used_for_child = result_tuple
-                current_parent_info = parent_info_for_tasks[idx] 
-                parent_id_for_child = current_parent_info['parent_id']
-                children_processed_count +=1
-
-                if child_code_string is None:
-                    main_logger.warning("    Child generation %s/%s for parent %s failed (LLM returned None or bad format). Prompt used (first 100 chars): %s..." % (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', prompt_used_for_child[:100]))
-                    continue
-                
-                main_logger.log(VERBOSE_LEVEL_NUM, "Initial Child Code %s/%s (Parent: %s)\nPrompt (first 300 chars):\n%s...\nChild Code:\n%s", 
-                                children_processed_count, len(generated_children_results), 
-                                parent_id_for_child[:8] if parent_id_for_child else 'N/A', 
-                                prompt_used_for_child[:300], child_code_string)
-                main_logger.debug("    Child %s/%s generated for parent %s. Code (first 200 chars):\n%s..." % (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', child_code_string[:200]))
-
-                # Evaluate the child program
-                main_logger.info("Evaluating child %s/%s (Parent: %s)..." % (idx + 1, len(child_generation_tasks), parent_id_for_child[:8] if parent_id_for_child else 'N/A'))
-                main_logger.debug("Child %s raw code string:\n%s" % (idx + 1, child_code_string)) # Log the child code string
-                
-                current_code_to_evaluate = child_code_string
-                current_eval_results = evaluator.evaluate(current_code_to_evaluate, main_cfg, problem_cfg, current_problem_dir)
-                current_prompt_for_db = prompt_used_for_child
-
-                # --- Self-correction loop ---
-                llm_settings = main_cfg.get('llm', {})
-                enable_self_correction = llm_settings.get('enable_self_correction', False)
-                max_correction_attempts = llm_settings.get('max_correction_attempts', 3)
-
-                if enable_self_correction and not current_eval_results.get('is_valid', False):
-                    error_message = current_eval_results.get('error_message', '')
-                    # Define correctable errors: syntax errors or basic runtime errors from initial exec by app/evaluator.py
-                    is_correctable_error_type = (
-                        "SyntaxError:" in error_message or 
-                        "Error during program execution/setup:" in error_message or
-                        ("Error in problem-specific evaluator" in error_message and "Function 'solve' not found" in error_message) # Correct if function not defined
-                    )
-
-                    if is_correctable_error_type:
-                        main_logger.info("Child %s/%s (Parent: %s) has a correctable error: '%s'. Attempting self-correction." % 
-                                         (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', error_message.splitlines()[0]))
-                        
-                        for attempt in range(max_correction_attempts):
-                            main_logger.info("  Self-correction attempt %s/%s..." % (attempt + 1, max_correction_attempts))
-                            correction_context = {
-                                'parent_code': current_code_to_evaluate, # The code that failed
-                                'previous_error_feedback': error_message # The error it produced
-                            }
-                            corrected_code_string, correction_prompt_used = await llm_generator.generate_code_variant(
-                                context_from_evolution_loop=correction_context, 
-                                client=client,
-                                current_delegation_depth=0 # Self-correction restarts orchestration at depth 0
-                            )
-
-                            if corrected_code_string is None:
-                                main_logger.warning("    Self-correction attempt %s/%s: LLM returned None. Aborting correction for this child." % (attempt + 1, max_correction_attempts))
-                                break # Stop trying to correct this child if LLM fails to return code
-                            
-                            main_logger.log(VERBOSE_LEVEL_NUM, "Self-Correction Attempt %s/%s - Code (Parent: %s):\nCorrection Prompt (first 300 chars):\n%s...\nCorrected Code:\n%s", 
-                                            attempt + 1, max_correction_attempts, parent_id_for_child[:8] if parent_id_for_child else 'N/A',
-                                            correction_prompt_used[:300], corrected_code_string)
-                            main_logger.debug("    Self-correction attempt %s/%s: Received new code (first 200 chars):\n%s..." % (attempt + 1, max_correction_attempts, corrected_code_string[:200]))
-                            temp_eval_results = evaluator.evaluate(corrected_code_string, main_cfg, problem_cfg, current_problem_dir)
-
-                            current_code_to_evaluate = corrected_code_string
-                            current_eval_results = temp_eval_results
-                            current_prompt_for_db = correction_prompt_used # Log the prompt that led to this version
-
-                            if temp_eval_results.get('is_valid', False):
-                                main_logger.info("    Self-correction attempt %s/%s successful: Program is now valid." % (attempt + 1, max_correction_attempts))
-                                break # Correction successful
-                            else:
-                                new_error_message = temp_eval_results.get('error_message', '')
-                                if new_error_message == error_message:
-                                    main_logger.warning("    Self-correction attempt %s/%s: Error persisted unchanged: '%s'." % 
-                                                      (attempt + 1, max_correction_attempts, new_error_message.splitlines()[0]))
-                                else:
-                                    main_logger.info("    Self-correction attempt %s/%s: Error changed to: '%s'. Continuing if attempts left." % 
-                                                     (attempt + 1, max_correction_attempts, new_error_message.splitlines()[0]))
-                                    error_message = new_error_message # Update error for next attempt or final logging
-                                
-                                if attempt == max_correction_attempts - 1:
-                                    main_logger.warning("    Self-correction failed after %s attempts. Using last generated code for DB entry." % max_correction_attempts)
-                        # End of correction loop
-                # End of self-correction block
-
-                # Log final evaluation results (either from initial eval or after correction attempts)
-                main_logger.info("    Child %s/%s (Parent: %s) Final Eval: Score=%.4f, Valid=%s" % 
-                                 (children_processed_count, len(generated_children_results), parent_id_for_child[:8] if parent_id_for_child else 'N/A', 
-                                  current_eval_results.get('score', 0.0), current_eval_results.get('is_valid')))
-                if current_eval_results.get('error_message') and not current_eval_results.get('is_valid'): # Only log error if still invalid
-                     main_logger.warning("    Child %s/%s Final Error: %s" % (children_processed_count, len(generated_children_results), current_eval_results.get('error_message')))
-
-                # Add the program (potentially corrected) to the database
-                if current_eval_results.get('is_valid'): # Add to DB only if valid after all attempts
-                    child_id = program_db.add_program(
-                        code_string=current_code_to_evaluate, # Use the potentially corrected code
-                        score=current_eval_results.get('score'),
-                        is_valid=current_eval_results.get('is_valid'),
-                        generation_discovered=gen,
-                        parent_id=parent_id_for_child, 
-                        llm_prompt=current_prompt_for_db, # Use the prompt that led to this version
-                        evaluation_results=current_eval_results,
-                        db_path=db_path
-                    )
-                    if child_id:
-                        main_logger.info("    Added new valid child to DB: ID=%s, Score=%.4f" % (child_id[:8] if child_id else 'N/A', current_eval_results.get('score',0.0)))
-                    else:
-                        main_logger.info("    Valid child was a duplicate (by normalized hash), not added. Score=%.4f" % current_eval_results.get('score',0.0))
-                else:
-                    main_logger.info("    Child code (after potential corrections) was invalid or failed. Not adding to DB. Error: %s" % current_eval_results.get('error_message', 'N/A'))
-
-            best_programs_overall = program_db.get_best_n_programs(n=1, db_path=db_path)
+            # --- Check for overall target metric (Program-based) ---
+            best_programs_overall = program_db.get_best_n_programs(n=1, db_path=program_db_path)
             if best_programs_overall:
                 current_best_program = best_programs_overall[0]
                 current_best_score = current_best_program['score']
                 current_best_id = current_best_program['program_id']
-                main_logger.info("Generation %s Summary: Current best score in DB = %.4f (ID: %s)" % (gen, current_best_score, current_best_id[:8] if current_best_id else 'N/A'))
+                main_logger.info("Generation %s Summary: Current best program score in DB = %.4f (ID: %s)" % (gen, current_best_score, current_best_id[:8] if current_best_id else 'N/A'))
                 
                 if target_metric_value is not None:
-                    actual_metric_value = current_best_program['evaluation_results'].get(target_metric_name, 0.0) 
-                    # Allow for float comparisons
+                    actual_metric_value = current_best_program['evaluation_results'].get(target_metric_name, 0.0)
                     met_target = False
                     if target_comparison_mode == 'greater_than_or_equal_to':
                         if actual_metric_value >= float(target_metric_value) - 1e-9: met_target = True
@@ -343,13 +327,14 @@ async def run_evolution():
                         main_logger.info("SUCCESS: Target metric '%s' value %.4f (vs target %.4f) achieved by program %s! Halting evolution." % (
                             target_metric_name, actual_metric_value, float(target_metric_value), current_best_id[:8] if current_best_id else 'N/A'
                         ))
-                        break 
+                        break
             else:
                 main_logger.warning("Generation %s Summary: No valid programs found in DB to determine best score." % gen)
             
             main_logger.info("---- Generation %s Finished ----\n" % gen)
-            if num_generations > 1 and gen < num_generations: # Avoid sleep on last gen or if only 1 gen
-                time.sleep(1) 
+            if num_generations > 1 and gen < num_generations:
+                time.sleep(1)
+
 
     main_logger.info("==== Mini-Evolve Session Finished ====")
 

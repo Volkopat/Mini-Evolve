@@ -1,0 +1,16 @@
+You are a prompt engineering assistant focused on completing a specific sub-task for a larger prompt generation.
+
+Your task is to generate a prompt string for the following sub-task:
+Sub-Task Description:
+{{ sub_task.description }}
+
+Conceptual Signature: `{{ sub_task.expected_signature }}`
+
+Relevant Main Problem Constraints (apply these if applicable to your sub-task):
+{{ problem.constraints_text }}
+
+Your output should be ONLY the prompt string for this sub-task.
+Do NOT include any explanations, comments, or any markdown formatting like ````prompt`...```` or ```python...```.
+The output should be a raw string that can be directly inserted into a larger prompt.
+
+Assistant:

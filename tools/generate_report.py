@@ -8,7 +8,9 @@ import yaml
 # Adjust Python path to include the project root
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.program_db import get_database_path, normalize_code # Assuming normalize_code might be useful for display
+from app.program_db import get_database_path as get_program_db_path, normalize_code
+from app.prompt_db import get_database_path as get_prompt_db_path
+from app.evaluator_db import get_database_path as get_evaluator_db_path
 
 REPORTS_DIR = "reports"
 MAIN_CONFIG_FILE = "config/config.yaml"
@@ -21,44 +23,62 @@ def get_current_problem_from_config():
     except Exception:
         return "Unknown Problem (Error reading config)"
 
-def generate_report(db_path, report_filename=None):
-    if not os.path.exists(db_path):
-        print("Database file '%s' not found." % db_path)
+def generate_report(report_filename=None):
+    program_db_path = get_program_db_path()
+    prompt_db_path = get_prompt_db_path()
+    evaluator_db_path = get_evaluator_db_path()
+
+    if not os.path.exists(program_db_path):
+        print("Program database file '%s' not found. Cannot generate report." % program_db_path)
         return
 
     problem_name = get_current_problem_from_config()
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
 
     report_lines = []
     report_lines.append("# Mini-Evolve Run Report")
     report_lines.append("Generated: %s" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     report_lines.append("Problem: %s" % os.path.basename(problem_name)) # Get just the dir name
-    report_lines.append("Database: %s" % db_path)
+    report_lines.append("Program Database: %s" % program_db_path)
+    report_lines.append("Prompt Database: %s" % prompt_db_path)
+    report_lines.append("Evaluator Database: %s" % evaluator_db_path)
     report_lines.append("\n---")
+
+    # Connect to program DB for program-specific stats
+    conn_program = sqlite3.connect(program_db_path)
+    conn_program.row_factory = sqlite3.Row
+    cursor_program = conn_program.cursor()
+
+    # Connect to prompt DB
+    conn_prompt = sqlite3.connect(prompt_db_path)
+    conn_prompt.row_factory = sqlite3.Row
+    cursor_prompt = conn_prompt.cursor()
+
+    # Connect to evaluator DB
+    conn_evaluator = sqlite3.connect(evaluator_db_path)
+    conn_evaluator.row_factory = sqlite3.Row
+    cursor_evaluator = conn_evaluator.cursor()
+
 
     # --- Overall Statistics ---
     report_lines.append("\n## I. Overall Statistics")
     try:
-        cursor.execute("SELECT COUNT(*) as total_programs FROM programs")
-        total_programs = cursor.fetchone()['total_programs']
+        cursor_program.execute("SELECT COUNT(*) as total_programs FROM programs")
+        total_programs = cursor_program.fetchone()['total_programs']
         report_lines.append("- Total programs in database: %s" % total_programs)
 
-        cursor.execute("SELECT COUNT(*) as valid_programs FROM programs WHERE is_valid = 1")
-        valid_programs = cursor.fetchone()['valid_programs']
+        cursor_program.execute("SELECT COUNT(*) as valid_programs FROM programs WHERE is_valid = 1")
+        valid_programs = cursor_program.fetchone()['valid_programs']
         report_lines.append("- Valid programs: %s" % valid_programs)
 
-        cursor.execute("SELECT COUNT(*) as invalid_programs FROM programs WHERE is_valid = 0")
-        invalid_programs = cursor.fetchone()['invalid_programs']
+        cursor_program.execute("SELECT COUNT(*) as invalid_programs FROM programs WHERE is_valid = 0")
+        invalid_programs = cursor_program.fetchone()['invalid_programs']
         report_lines.append("- Invalid programs: %s" % invalid_programs)
 
         if total_programs > 0:
             report_lines.append("- Percentage valid: %.2f%%" % ((valid_programs / total_programs) * 100 if total_programs > 0 else 0))
 
-        cursor.execute("SELECT MIN(score) as min_score, MAX(score) as max_score, AVG(score) as avg_score FROM programs WHERE is_valid = 1")
-        score_stats = cursor.fetchone()
+        cursor_program.execute("SELECT MIN(score) as min_score, MAX(score) as max_score, AVG(score) as avg_score FROM programs WHERE is_valid = 1")
+        score_stats = cursor_program.fetchone()
         if score_stats and score_stats['max_score'] is not None:
             report_lines.append("- Max score (valid programs): %.4f" % score_stats['max_score'])
             report_lines.append("- Min score (valid programs): %.4f" % score_stats['min_score'])
@@ -66,8 +86,8 @@ def generate_report(db_path, report_filename=None):
         else:
             report_lines.append("- No valid programs with scores found for stats.")
             
-        cursor.execute("SELECT MIN(generation_discovered) as first_gen, MAX(generation_discovered) as last_gen FROM programs")
-        gen_stats = cursor.fetchone()
+        cursor_program.execute("SELECT MIN(generation_discovered) as first_gen, MAX(generation_discovered) as last_gen FROM programs")
+        gen_stats = cursor_program.fetchone()
         if gen_stats and gen_stats['first_gen'] is not None:
             report_lines.append("- Generations spanned: %s to %s" % (gen_stats['first_gen'], gen_stats['last_gen']))
 
@@ -75,13 +95,85 @@ def generate_report(db_path, report_filename=None):
         report_lines.append("- Error fetching overall statistics: %s" % e)
 
 
+    # --- Prompt Statistics ---
+    report_lines.append("\n## II. Prompt Statistics")
+    try:
+        cursor_prompt.execute("SELECT COUNT(*) as total_prompts FROM prompts")
+        total_prompts = cursor_prompt.fetchone()['total_prompts']
+        report_lines.append("- Total prompts in database: %s" % total_prompts)
+
+        cursor_prompt.execute("SELECT MIN(score) as min_score, MAX(score) as max_score, AVG(score) as avg_score FROM prompts")
+        prompt_score_stats = cursor_prompt.fetchone()
+        if prompt_score_stats and prompt_score_stats['max_score'] is not None:
+            report_lines.append("- Max score (prompts): %.4f" % prompt_score_stats['max_score'])
+            report_lines.append("- Min score (prompts): %.4f" % prompt_score_stats['min_score'])
+            report_lines.append("- Average score (prompts): %.4f" % prompt_score_stats['avg_score'])
+        else:
+            report_lines.append("- No prompts with scores found for stats.")
+            
+        cursor_prompt.execute("SELECT MIN(generation_discovered) as first_gen, MAX(generation_discovered) as last_gen FROM prompts")
+        prompt_gen_stats = cursor_prompt.fetchone()
+        if prompt_gen_stats and prompt_gen_stats['first_gen'] is not None:
+            report_lines.append("- Generations spanned (prompts): %s to %s" % (prompt_gen_stats['first_gen'], prompt_gen_stats['last_gen']))
+
+        report_lines.append("\n### Top Prompt:")
+        cursor_prompt.execute("SELECT * FROM prompts ORDER BY score DESC, timestamp_added DESC LIMIT 1")
+        best_prompt = cursor_prompt.fetchone()
+        if best_prompt:
+            report_lines.append("- Prompt ID: %s" % best_prompt['prompt_id'])
+            report_lines.append("- Score: %.4f" % best_prompt['score'])
+            report_lines.append("- Generation Discovered: %s" % best_prompt['generation_discovered'])
+            report_lines.append("```")
+            report_lines.append(best_prompt['prompt_string'])
+            report_lines.append("```")
+        else:
+            report_lines.append("No prompts found in the database.")
+    except sqlite3.Error as e:
+        report_lines.append("- Error fetching prompt statistics: %s" % e)
+
+    # --- Evaluator Statistics ---
+    report_lines.append("\n## III. Evaluator Statistics")
+    try:
+        cursor_evaluator.execute("SELECT COUNT(*) as total_evaluators FROM evaluators")
+        total_evaluators = cursor_evaluator.fetchone()['total_evaluators']
+        report_lines.append("- Total evaluators in database: %s" % total_evaluators)
+
+        cursor_evaluator.execute("SELECT MIN(challenge_score) as min_score, MAX(challenge_score) as max_score, AVG(challenge_score) as avg_score FROM evaluators")
+        evaluator_score_stats = cursor_evaluator.fetchone()
+        if evaluator_score_stats and evaluator_score_stats['max_score'] is not None:
+            report_lines.append("- Max challenge score (evaluators): %.4f" % evaluator_score_stats['max_score'])
+            report_lines.append("- Min challenge score (evaluators): %.4f" % evaluator_score_stats['min_score'])
+            report_lines.append("- Average challenge score (evaluators): %.4f" % evaluator_score_stats['avg_score'])
+        else:
+            report_lines.append("- No evaluators with scores found for stats.")
+            
+        cursor_evaluator.execute("SELECT MIN(generation_discovered) as first_gen, MAX(generation_discovered) as last_gen FROM evaluators")
+        evaluator_gen_stats = cursor_evaluator.fetchone()
+        if evaluator_gen_stats and evaluator_gen_stats['first_gen'] is not None:
+            report_lines.append("- Generations spanned (evaluators): %s to %s" % (evaluator_gen_stats['first_gen'], evaluator_gen_stats['last_gen']))
+
+        report_lines.append("\n### Top Evaluator:")
+        cursor_evaluator.execute("SELECT * FROM evaluators ORDER BY challenge_score DESC, timestamp_added DESC LIMIT 1")
+        best_evaluator = cursor_evaluator.fetchone()
+        if best_evaluator:
+            report_lines.append("- Evaluator ID: %s" % best_evaluator['evaluator_id'])
+            report_lines.append("- Challenge Score: %.4f" % best_evaluator['challenge_score'])
+            report_lines.append("- Generation Discovered: %s" % best_evaluator['generation_discovered'])
+            report_lines.append("```python")
+            report_lines.append(best_evaluator['evaluator_code_string'])
+            report_lines.append("```")
+        else:
+            report_lines.append("No evaluators found in the database.")
+    except sqlite3.Error as e:
+        report_lines.append("- Error fetching evaluator statistics: %s" % e)
+
     # --- Best Program(s) ---
-    report_lines.append("\n## II. Best Program(s)")
+    report_lines.append("\n## IV. Best Program(s)") # Changed section number
     try:
         # Get the program(s) with the highest score
         # If multiple have the same highest score, this will pick one by timestamp
-        cursor.execute("SELECT * FROM programs WHERE is_valid = 1 ORDER BY score DESC, timestamp_added DESC LIMIT 1")
-        best_program = cursor.fetchone()
+        cursor_program.execute("SELECT * FROM programs WHERE is_valid = 1 ORDER BY score DESC, timestamp_added DESC LIMIT 1")
+        best_program = cursor_program.fetchone()
 
         if best_program:
             report_lines.append("### Top Scorer:")
@@ -104,10 +196,10 @@ def generate_report(db_path, report_filename=None):
 
     # --- Top N Programs ---
     TOP_N_COUNT = 5
-    report_lines.append("\n## III. Top %s Programs (by Score)" % TOP_N_COUNT)
+    report_lines.append("\n## V. Top %s Programs (by Score)" % TOP_N_COUNT) # Changed section number
     try:
-        cursor.execute("SELECT * FROM programs WHERE is_valid = 1 ORDER BY score DESC, timestamp_added DESC LIMIT ?", (TOP_N_COUNT,))
-        top_programs = cursor.fetchall()
+        cursor_program.execute("SELECT * FROM programs WHERE is_valid = 1 ORDER BY score DESC, timestamp_added DESC LIMIT ?", (TOP_N_COUNT,))
+        top_programs = cursor_program.fetchall()
         if top_programs:
             for i, prog in enumerate(top_programs):
                 report_lines.append("\n### %s. Program ID: %s" % (i + 1, prog['program_id']))
@@ -130,11 +222,11 @@ def generate_report(db_path, report_filename=None):
     except sqlite3.Error as e:
         report_lines.append("- Error fetching top N programs: %s" % e)
 
-    # --- Section IV: Evolutionary Tree ---
-    report_lines.append("\n## IV. Evolutionary Lineage (Parent-Child)")
+    # --- Section VI: Evolutionary Lineage (Parent-Child Programs) --- # Changed section number
+    report_lines.append("\n## VI. Evolutionary Lineage (Parent-Child Programs)")
     try:
-        cursor.execute("SELECT program_id, parent_id, generation_discovered, score, is_valid FROM programs ORDER BY generation_discovered ASC, timestamp_added ASC")
-        all_programs_for_tree = cursor.fetchall()
+        cursor_program.execute("SELECT program_id, parent_id, generation_discovered, score, is_valid FROM programs ORDER BY generation_discovered ASC, timestamp_added ASC")
+        all_programs_for_tree = cursor_program.fetchall()
         
         programs_by_id = {p['program_id']: p for p in all_programs_for_tree}
         children_map = {}
@@ -182,11 +274,11 @@ def generate_report(db_path, report_filename=None):
     except sqlite3.Error as e:
         report_lines.append("- Error generating evolutionary lineage: %s" % e)
 
-    # --- Section V: Sequential List of Programs by Generation ---
-    report_lines.append("\n## V. All Programs by Generation & Timestamp")
+    # --- Section VII: Sequential List of Programs by Generation --- # Changed section number
+    report_lines.append("\n## VII. All Programs by Generation & Timestamp")
     try:
-        cursor.execute("SELECT program_id, generation_discovered, score, is_valid, parent_id, timestamp_added, code_string FROM programs ORDER BY generation_discovered ASC, timestamp_added ASC")
-        all_programs_sequential = cursor.fetchall()
+        cursor_program.execute("SELECT program_id, generation_discovered, score, is_valid, parent_id, timestamp_added, code_string FROM programs ORDER BY generation_discovered ASC, timestamp_added ASC")
+        all_programs_sequential = cursor_program.fetchall()
         if all_programs_sequential:
             for i, prog in enumerate(all_programs_sequential):
                 report_lines.append("\n### %s. Program ID: %s (Gen: %s)" % (i + 1, prog['program_id'], prog['generation_discovered']))
@@ -205,7 +297,9 @@ def generate_report(db_path, report_filename=None):
     except sqlite3.Error as e:
         report_lines.append("- Error fetching sequential program list: %s" % e)
         
-    conn.close()
+    conn_program.close()
+    conn_prompt.close()
+    conn_evaluator.close()
 
     # --- Write Report ---
     if not os.path.exists(REPORTS_DIR):
@@ -237,7 +331,7 @@ def generate_report(db_path, report_filename=None):
         print("Error writing report file '%s': %s" % (report_filename, e))
 
 if __name__ == "__main__":
-    db_file = get_database_path()
+    db_file = get_program_db_path()
     print("Generating report from database: %s" % db_file)
-    generate_report(db_file)
+    generate_report()
     print("\nTo view the report, open the .md file in the '%s' directory." % REPORTS_DIR) 
